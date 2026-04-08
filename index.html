@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WWE 2K25 — Superstar Mode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-wwe">WWE</span>
+      <span class="logo-sub">2K25 · Superstar Mode</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-btn active" data-view="calendar">
+        <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="7" y1="2" x2="7" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="2" x2="13" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="8" x2="17" y2="8" stroke="currentColor" stroke-width="1.5"/></svg>
+        Calendario
+      </button>
+      <button class="nav-btn" data-view="history">
+        <svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+        Historial
+      </button>
+      <button class="nav-btn" data-view="stats">
+        <svg viewBox="0 0 20 20"><path d="M3 16l4-5 4 3 4-7 2 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        Estadísticas
+      </button>
+      <button class="nav-btn" data-view="catalogs">
+        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10 7v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+        Catálogos
+      </button>
+    </nav>
+    <div class="sidebar-meta" id="sidebar-meta">
+      <div class="meta-item"><span class="meta-label">Luchas</span><span class="meta-val" id="meta-total">0</span></div>
+      <div class="meta-item"><span class="meta-label">Victorias</span><span class="meta-val win" id="meta-wins">0</span></div>
+      <div class="meta-item"><span class="meta-label">Derrotas</span><span class="meta-val loss" id="meta-losses">0</span></div>
+      <div class="meta-item"><span class="meta-label">Rating</span><span class="meta-val" id="meta-rating">—</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main id="main">
+
+    <!-- CALENDAR VIEW -->
+    <section id="view-calendar" class="view active">
+      <div class="view-header">
+        <div class="nav-date">
+          <button class="arrow-btn" id="prev-month">&#8592;</button>
+          <div>
+            <h1 id="cal-month-title">Enero</h1>
+            <span id="cal-year-title" class="year-label">Año 1</span>
+          </div>
+          <button class="arrow-btn" id="next-month">&#8594;</button>
+        </div>
+      </div>
+      <div class="calendar-wrap">
+        <div class="cal-day-headers">
+          <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+      <div class="cal-legend">
+        <span class="leg win">Victoria</span>
+        <span class="leg loss">Derrota</span>
+        <span class="leg draw">Empate</span>
+        <span class="leg promo">Promo</span>
+      </div>
+    </section>
+
+    <!-- HISTORY VIEW -->
+    <section id="view-history" class="view">
+      <div class="view-header">
+        <h1>Historial de Luchas</h1>
+        <div class="filter-row" id="history-filters">
+          <select id="filter-brand" class="filter-sel"><option value="">Todas las marcas</option></select>
+          <select id="filter-type" class="filter-sel"><option value="">Todos los tipos</option></select>
+          <select id="filter-result" class="filter-sel">
+            <option value="">Todos los resultados</option>
+            <option value="win">Victoria</option>
+            <option value="loss">Derrota</option>
+            <option value="draw">Empate</option>
+          </select>
+        </div>
+      </div>
+      <div id="history-list" class="history-list"></div>
+    </section>
+
+    <!-- STATS VIEW -->
+    <section id="view-stats" class="view">
+      <div class="view-header"><h1>Estadísticas</h1></div>
+      <div class="stats-layout">
+        <div class="stat-block">
+          <h3>Resumen general</h3>
+          <div class="stat-cards" id="stat-general"></div>
+        </div>
+        <div class="stat-block">
+          <h3>% Victoria por tipo de lucha</h3>
+          <div id="stat-by-type" class="bar-list"></div>
+        </div>
+        <div class="stat-block">
+          <h3>Luchas por marca / evento</h3>
+          <div id="stat-by-brand" class="bar-list"></div>
+        </div>
+        <div class="stat-block">
+          <h3>Rivalidades</h3>
+          <div id="stat-rivalries" class="rivalry-list"></div>
+        </div>
+        <div class="stat-block">
+          <h3>Reinados — Días con el título</h3>
+          <div id="stat-titles" class="title-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CATALOGS VIEW -->
+    <section id="view-catalogs" class="view">
+      <div class="view-header"><h1>Catálogos</h1></div>
+      <div class="catalog-grid">
+        <div class="catalog-card" id="cat-wrestlers"><h3>Luchadores / VS</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nuevo luchador…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-types"><h3>Tipos de lucha</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nuevo tipo…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-brands"><h3>Marcas / Eventos</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nueva marca…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-titles"><h3>Campeonatos</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nuevo título…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-divisions"><h3>Divisiones</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nueva división…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-winners"><h3>Ganadores</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nuevo ganador…"><button>+</button></div></div>
+        <div class="catalog-card" id="cat-rivalactions"><h3>Acciones de rivalidad</h3><div class="cat-list"></div><div class="cat-add"><input type="text" placeholder="Nueva acción…"><button>+</button></div></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- MATCH MODAL -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="modal-title">Agregar lucha</h2>
+        <span id="modal-date-label" class="modal-date"></span>
+      </div>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Day matches list -->
+      <div id="day-matches-section" class="day-matches-section hidden">
+        <h4>Luchas del día</h4>
+        <div id="day-matches-list"></div>
+        <button class="btn-add-another" id="btn-add-another">+ Agregar otra lucha</button>
+        <hr class="modal-divider" id="form-divider">
+      </div>
+
+      <div id="match-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Marca / Evento</label>
+            <select id="f-brand" class="form-sel"></select>
+          </div>
+          <div class="form-group">
+            <label>División</label>
+            <select id="f-division" class="form-sel"></select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de lucha</label>
+          <div class="multi-select-wrap" id="ms-type"></div>
+        </div>
+
+        <div class="form-group">
+          <label>VS (rivales)</label>
+          <div class="multi-select-wrap" id="ms-vs"></div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Título(s) en juego</label>
+            <div class="multi-select-wrap" id="ms-titles"></div>
+          </div>
+          <div class="form-group">
+            <label>Ganador(es)</label>
+            <div class="multi-select-wrap" id="ms-winners"></div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Rivalidad con</label>
+            <select id="f-rivalry" class="form-sel"><option value="">— ninguna —</option></select>
+          </div>
+          <div class="form-group">
+            <label>Acción de rivalidad</label>
+            <select id="f-rivalry-action" class="form-sel"><option value="">— ninguna —</option></select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Calificación</label>
+            <div class="star-rating" id="star-rating">
+              <span class="star-val" id="star-display">★ 0.0</span>
+              <input type="range" min="0" max="10" step="1" value="0" id="f-rating">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Comentario</label>
+          <textarea id="f-comment" rows="3" placeholder="Notas sobre el combate…"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn-cancel" id="btn-cancel">Cancelar</button>
+          <button class="btn-save" id="btn-save">Guardar lucha</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DAY DETAIL MODAL -->
+<div id="day-detail-overlay" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="day-detail-title">Luchas del día</h2>
+      <button class="modal-close" id="day-detail-close">✕</button>
+    </div>
+    <div class="modal-body" id="day-detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn-save" id="btn-day-add">+ Agregar lucha</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE -->
+<div id="confirm-overlay" class="modal-overlay hidden">
+  <div class="modal modal-xs">
+    <div class="modal-header"><h2>Eliminar lucha</h2></div>
+    <div class="modal-body"><p style="color:var(--text-sec);font-size:14px;">¿Estás seguro? Esta acción no se puede deshacer.</p></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-cancel" id="confirm-no">Cancelar</button>
+      <button class="btn-danger" id="confirm-yes">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
