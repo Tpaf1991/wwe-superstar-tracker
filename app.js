@@ -3,34 +3,38 @@
 // ============================================================
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const DAYS_PER_MONTH = 28;
-const WEEKS = ['Semana 1','Semana 2','Semana 3','Semana 4'];
-const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const WEEKS  = ['Semana 1','Semana 2','Semana 3','Semana 4'];
 
 // ---- State ----
 let state = {
-  currentMonth: 0,  // 0-11
-  currentYear: 1,   // WWE year
+  currentMonth: 0,
+  currentYear: 1,
   matches: [],
   catalogs: {
-    wrestlers: [],
-    types: ['Singles','Tag Team','Triple Threat','Fatal 4-Way','Battle Royal','Hell in a Cell','TLC','Ladder','Steel Cage','Last Man Standing','Extreme Rules','Promo'],
-    brands: ['Raw','SmackDown','NXT','WrestleMania','SummerSlam','Royal Rumble','Survivor Series','Money in the Bank','Elimination Chamber'],
-    titles: ['WWE Championship','Universal Championship','Intercontinental Championship','United States Championship','Raw Tag Team Championship','SmackDown Tag Team Championship','Women\'s Championship','Women\'s Tag Team Championship'],
-    divisions: ['WWE Championship','Universal Championship','Intercontinental','United States','Tag Team','Women\'s','Women\'s Tag Team'],
-    winners: [],
-    rivalactions: ['Inicio de rivalidad','Ataque post-lucha','Interferencia','Traición','Confrontación verbal','Desafío al título','Fin de rivalidad','Alianza inesperada']
+    wrestlers:    [],
+    types:        [],
+    brands:       [],
+    titles:       [],
+    divisions:    [],
+    winners:      [],
+    rivalactions: []
   },
   editingMatchId: null,
   pendingDay: null,
-  pendingDeleteId: null
+  pendingDeleteId: null,
+  pendingImageFile: null,
+  pendingImageURL: null,
+  addCatCallback: null
 };
 
-// ---- Firestore refs ----
-const matchesRef = db.collection('matches');
+// ---- Firestore / Storage refs ----
+const matchesRef  = db.collection('matches');
 const catalogsRef = db.collection('catalogs');
+const storage     = firebase.storage();
 
-// ---- Init ----
+// ============================================================
+//  INIT
+// ============================================================
 async function init() {
   await loadCatalogs();
   await loadMatches();
@@ -40,14 +44,18 @@ async function init() {
   renderCatalogs();
   updateSidebarMeta();
   setupNavigation();
+  setupSidebarToggle();
   setupCalendarNav();
   setupModal();
   setupDayDetailModal();
   setupCatalogEditors();
   setupConfirmModal();
+  setupAddCatModal();
 }
 
-// ---- Navigation ----
+// ============================================================
+//  NAVIGATION
+// ============================================================
 function setupNavigation() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -56,11 +64,41 @@ function setupNavigation() {
       btn.classList.add('active');
       document.getElementById('view-' + btn.dataset.view).classList.add('active');
       if (btn.dataset.view === 'stats') renderStats();
+      closeSidebar();
     });
   });
 }
 
-// ---- Firebase: Load / Save ----
+// ============================================================
+//  SIDEBAR TOGGLE (mobile)
+// ============================================================
+function setupSidebarToggle() {
+  const toggle   = document.getElementById('menu-toggle');
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+
+  toggle.addEventListener('click', () => {
+    const isOpen = sidebar.classList.contains('open');
+    isOpen ? closeSidebar() : openSidebar();
+  });
+  backdrop.addEventListener('click', closeSidebar);
+}
+
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-backdrop').classList.add('visible');
+  document.getElementById('menu-toggle').classList.add('open');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('visible');
+  document.getElementById('menu-toggle').classList.remove('open');
+}
+
+// ============================================================
+//  FIREBASE: LOAD / SAVE
+// ============================================================
 async function loadMatches() {
   const snap = await matchesRef.orderBy('sortKey').get();
   state.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -76,13 +114,13 @@ async function saveMatch(data) {
     state.matches.push({ id: docRef.id, ...data });
     state.matches.sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
   }
-  renumberMatches();
+  await renumberMatches();
 }
 
 async function deleteMatch(id) {
   await matchesRef.doc(id).delete();
   state.matches = state.matches.filter(m => m.id !== id);
-  renumberMatches();
+  await renumberMatches();
 }
 
 async function renumberMatches() {
@@ -96,20 +134,104 @@ async function renumberMatches() {
 
 async function loadCatalogs() {
   const snap = await catalogsRef.get();
-  if (!snap.empty) {
-    snap.docs.forEach(d => {
-      if (state.catalogs[d.id] !== undefined) {
-        state.catalogs[d.id] = d.data().items || state.catalogs[d.id];
-      }
-    });
-  }
+  snap.docs.forEach(d => {
+    if (state.catalogs[d.id] !== undefined) {
+      state.catalogs[d.id] = d.data().items || [];
+    }
+  });
 }
 
 async function saveCatalog(key) {
+  // Keep sorted alphabetically
+  state.catalogs[key].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
   await catalogsRef.doc(key).set({ items: state.catalogs[key] });
 }
 
-// ---- Date helpers ----
+// Auto-add a value to catalog if not already present, then save
+async function ensureInCatalog(key, value) {
+  if (!value || value === '' || state.catalogs[key].includes(value)) return;
+  state.catalogs[key].push(value);
+  await saveCatalog(key);
+}
+
+// ============================================================
+//  IMAGE UPLOAD
+// ============================================================
+async function uploadImage(file, matchId) {
+  const ext  = file.name.split('.').pop();
+  const ref  = storage.ref(`matches/${matchId}.${ext}`);
+  await ref.put(file);
+  return await ref.getDownloadURL();
+}
+
+function setupImageUpload() {
+  const area    = document.getElementById('image-upload-area');
+  const input   = document.getElementById('f-image');
+  const preview = document.getElementById('image-preview-img');
+  const placeholder = document.getElementById('image-placeholder');
+  const removeBtn   = document.getElementById('img-remove');
+
+  area.addEventListener('click', (e) => {
+    if (e.target === removeBtn || removeBtn.contains(e.target)) return;
+    input.click();
+  });
+
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    state.pendingImageFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+      removeBtn.classList.remove('hidden');
+      area.classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  removeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.pendingImageFile  = null;
+    state.pendingImageURL   = null;
+    input.value = '';
+    preview.src = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    removeBtn.classList.add('hidden');
+    area.classList.remove('has-image');
+  });
+}
+
+function resetImageUpload(existingURL) {
+  const preview = document.getElementById('image-preview-img');
+  const placeholder = document.getElementById('image-placeholder');
+  const removeBtn   = document.getElementById('img-remove');
+  const area        = document.getElementById('image-upload-area');
+
+  state.pendingImageFile = null;
+  state.pendingImageURL  = existingURL || null;
+  document.getElementById('f-image').value = '';
+
+  if (existingURL) {
+    preview.src = existingURL;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    removeBtn.classList.remove('hidden');
+    area.classList.add('has-image');
+  } else {
+    preview.src = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    removeBtn.classList.add('hidden');
+    area.classList.remove('has-image');
+  }
+}
+
+// ============================================================
+//  DATE HELPERS
+// ============================================================
 function makeSortKey(year, month, day) {
   return `${String(year).padStart(4,'0')}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
@@ -118,14 +240,30 @@ function formatDateLabel(year, month, day) {
   return `Día ${day} · ${MONTHS[month]} · Año ${year}`;
 }
 
-function getWeek(day) { return Math.floor((day - 1) / 7); }
-function getDayOfWeek(day) { return (day - 1) % 7; }
+function getResultClass(match) {
+  if (isPromo(match)) return 'promo';
+  const rivals  = match.vs || [];
+  const winners = match.winners || [];
+  if (winners.length === 0) return 'draw';
+  const userWon = winners.length > 0 && !winners.some(w => rivals.includes(w));
+  return userWon ? 'win' : 'loss';
+}
 
-// ---- Calendar ----
+function isPromo(match) {
+  return match.type && match.type.includes('Promo');
+}
+
+// ============================================================
+//  CALENDAR
+// ============================================================
 function setupCalendarNav() {
   document.getElementById('prev-month').addEventListener('click', () => {
     state.currentMonth--;
-    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; if (state.currentYear < 1) state.currentYear = 1; }
+    if (state.currentMonth < 0) {
+      state.currentMonth = 11;
+      state.currentYear--;
+      if (state.currentYear < 1) state.currentYear = 1;
+    }
     renderCalendar();
   });
   document.getElementById('next-month').addEventListener('click', () => {
@@ -137,21 +275,21 @@ function setupCalendarNav() {
 
 function renderCalendar() {
   document.getElementById('cal-month-title').textContent = MONTHS[state.currentMonth];
-  document.getElementById('cal-year-title').textContent = `Año ${state.currentYear}`;
+  document.getElementById('cal-year-title').textContent  = `Año ${state.currentYear}`;
 
   const grid = document.getElementById('cal-grid');
   grid.innerHTML = '';
 
-  const matchesThisMonth = state.matches.filter(m => m.month === state.currentMonth && m.year === state.currentYear);
+  const monthMatches = state.matches.filter(m => m.month === state.currentMonth && m.year === state.currentYear);
 
   for (let week = 0; week < 4; week++) {
-    const weekLabel = document.createElement('div');
-    weekLabel.className = 'cal-week-label';
-    weekLabel.textContent = WEEKS[week];
-    grid.appendChild(weekLabel);
+    const lbl = document.createElement('div');
+    lbl.className = 'cal-week-label';
+    lbl.textContent = WEEKS[week];
+    grid.appendChild(lbl);
 
     for (let dow = 0; dow < 7; dow++) {
-      const day = week * 7 + dow + 1;
+      const day  = week * 7 + dow + 1;
       const cell = document.createElement('div');
       cell.className = 'cal-cell';
 
@@ -160,17 +298,17 @@ function renderCalendar() {
       numDiv.textContent = day;
       cell.appendChild(numDiv);
 
-      const dayMatches = matchesThisMonth.filter(m => m.day === day);
+      const dayMatches = monthMatches.filter(m => m.day === day);
       if (dayMatches.length > 0) {
         cell.classList.add('has-match');
-        const dotsDiv = document.createElement('div');
-        dotsDiv.className = 'cal-dots';
+        const dots = document.createElement('div');
+        dots.className = 'cal-dots';
         dayMatches.forEach(m => {
           const dot = document.createElement('div');
           dot.className = 'cal-dot ' + getResultClass(m);
-          dotsDiv.appendChild(dot);
+          dots.appendChild(dot);
         });
-        cell.appendChild(dotsDiv);
+        cell.appendChild(dots);
 
         if (dayMatches.length === 1) {
           const preview = document.createElement('div');
@@ -186,33 +324,15 @@ function renderCalendar() {
   }
 }
 
-function getResultClass(match) {
-  if (isPromo(match)) return 'promo';
-  const myName = 'Mi Superstar';
-  const winners = match.winners || [];
-  if (winners.length === 0) return 'draw';
-  if (winners.some(w => w.toLowerCase().includes('mi superstar') || w === myName)) return 'win';
-  // Check if user won: if winners list is not empty and doesn't include any rival
-  const rivals = match.vs || [];
-  const userWon = winners.length > 0 && !winners.some(w => rivals.includes(w));
-  if (userWon) return 'win';
-  return 'loss';
-}
-
-function isPromo(match) {
-  return match.type && match.type.includes('Promo');
-}
-
-// ---- Day Modal ----
+// ============================================================
+//  DAY MODAL
+// ============================================================
 function openDayModal(day, month, year) {
-  const dayMatches = state.matches.filter(m => m.day === day && m.month === month && m.year === year);
   state.pendingDay = { day, month, year };
-
-  if (dayMatches.length > 0) {
-    showDayDetailModal(dayMatches, day, month, year);
-  } else {
-    openMatchForm(null, day, month, year);
-  }
+  const dayMatches = state.matches.filter(m => m.day === day && m.month === month && m.year === year);
+  dayMatches.length > 0
+    ? showDayDetailModal(dayMatches, day, month, year)
+    : openMatchForm(null, day, month, year);
 }
 
 function showDayDetailModal(matches, day, month, year) {
@@ -222,16 +342,17 @@ function showDayDetailModal(matches, day, month, year) {
   body.innerHTML = '';
 
   matches.forEach(m => {
+    const rc  = getResultClass(m);
+    const labelMap = { win:'Vic', loss:'Der', draw:'Emp', promo:'Promo' };
     const div = document.createElement('div');
     div.className = 'mini-match';
-    const rc = getResultClass(m);
     div.innerHTML = `
       <div class="mini-match-info">
         <div class="mini-match-title">${isPromo(m) ? 'PROMO' : (m.vs?.join(' vs ') || 'Sin rival')}</div>
         <div class="mini-match-sub">${m.type?.join(', ') || ''} ${m.brand ? '· ' + m.brand : ''}</div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <span class="match-result-badge ${rc}">${rc === 'win' ? 'Vic' : rc === 'loss' ? 'Der' : rc === 'promo' ? 'Promo' : 'Emp'}</span>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+        <span class="match-result-badge ${rc}">${labelMap[rc]}</span>
         <button class="btn-icon" onclick="editMatch('${m.id}')">Editar</button>
         <button class="btn-icon del" onclick="confirmDelete('${m.id}')">×</button>
       </div>`;
@@ -252,50 +373,58 @@ function setupDayDetailModal() {
   });
 }
 
-// ---- Match Form Modal ----
+// ============================================================
+//  MATCH FORM MODAL
+// ============================================================
 function setupModal() {
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('btn-cancel').addEventListener('click', closeModal);
-  document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
   document.getElementById('btn-save').addEventListener('click', handleSave);
   document.getElementById('f-rating').addEventListener('input', e => {
     document.getElementById('star-display').textContent = '★ ' + (e.target.value / 2).toFixed(1);
   });
+  setupImageUpload();
 }
 
 function openMatchForm(matchId, day, month, year) {
   state.editingMatchId = matchId;
   const match = matchId ? state.matches.find(m => m.id === matchId) : null;
 
-  if (match) {
-    day = match.day; month = match.month; year = match.year;
-  }
+  if (match) { day = match.day; month = match.month; year = match.year; }
 
-  document.getElementById('modal-title').textContent = match ? 'Editar lucha' : 'Agregar lucha';
+  document.getElementById('modal-title').textContent    = match ? 'Editar lucha' : 'Agregar lucha';
   document.getElementById('modal-date-label').textContent = formatDateLabel(year, month, day);
 
-  // Populate selects
-  populateSelect('f-brand', state.catalogs.brands, match?.brand);
-  populateSelect('f-division', ['', ...state.catalogs.divisions], match?.division);
-  populateSelect('f-rivalry', ['', ...state.catalogs.wrestlers], match?.rivalry);
-  populateSelect('f-rivalry-action', ['', ...state.catalogs.rivalactions], match?.rivalryAction);
+  // Smart selects (single value, dropdown, auto-add)
+  initSmartSelect('ss-brand',          'brands',       match?.brand        || '');
+  initSmartSelect('ss-division',       'divisions',    match?.division     || '');
+  initSmartSelect('ss-rivalry',        'wrestlers',    match?.rivalry      || '');
+  initSmartSelect('ss-rivalry-action', 'rivalactions', match?.rivalryAction|| '');
 
-  // Multi-selects
-  initMultiSelect('ms-type', state.catalogs.types, match?.type || []);
-  initMultiSelect('ms-vs', state.catalogs.wrestlers, match?.vs || []);
-  initMultiSelect('ms-titles', state.catalogs.titles, match?.titles || []);
-  initMultiSelect('ms-winners', state.catalogs.winners.length > 0 ? state.catalogs.winners : state.catalogs.wrestlers, match?.winners || []);
+  // Multi selects
+  initMultiSelect('ms-type',    'types',     match?.type    || []);
+  initMultiSelect('ms-vs',      'wrestlers', match?.vs      || []);
+  initMultiSelect('ms-titles',  'titles',    match?.titles  || []);
+  initMultiSelect('ms-winners', 'winners',   match?.winners || []);
 
   // Rating
-  const ratingVal = match ? Math.round(match.rating * 2) : 0;
-  document.getElementById('f-rating').value = ratingVal;
-  document.getElementById('star-display').textContent = '★ ' + (ratingVal / 2).toFixed(1);
+  const rv = match ? Math.round((match.rating || 0) * 2) : 0;
+  document.getElementById('f-rating').value = rv;
+  document.getElementById('star-display').textContent = '★ ' + (rv / 2).toFixed(1);
 
   // Comment
   document.getElementById('f-comment').value = match?.comment || '';
 
-  // Day matches summary (existing matches on this day)
-  const dayMatches = state.matches.filter(m => m.day === day && m.month === month && m.year === year && m.id !== matchId);
+  // Image
+  resetImageUpload(match?.imageURL || null);
+
+  // Existing matches on this day (for context)
+  const dayMatches = state.matches.filter(m =>
+    m.day === day && m.month === month && m.year === year && m.id !== matchId
+  );
   const daySection = document.getElementById('day-matches-section');
   if (dayMatches.length > 0) {
     daySection.classList.remove('hidden');
@@ -320,66 +449,87 @@ function openMatchForm(matchId, day, month, year) {
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   state.editingMatchId = null;
+  state.pendingImageFile = null;
+  state.pendingImageURL  = null;
 }
 
 async function handleSave() {
-  const { day, month, year } = state.pendingDay || (() => {
-    if (state.editingMatchId) {
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
+    let { day, month, year } = state.pendingDay || {};
+    if (state.editingMatchId && !day) {
       const m = state.matches.find(x => x.id === state.editingMatchId);
-      return { day: m.day, month: m.month, year: m.year };
+      day = m.day; month = m.month; year = m.year;
     }
-    return { day: 1, month: state.currentMonth, year: state.currentYear };
-  })();
 
-  const types = getMultiSelected('ms-type');
-  const vs = getMultiSelected('ms-vs');
-  const titles = getMultiSelected('ms-titles');
-  const winners = getMultiSelected('ms-winners');
+    const types   = getMultiSelected('ms-type');
+    const vs      = getMultiSelected('ms-vs');
+    const titles  = getMultiSelected('ms-titles');
+    const winners = getMultiSelected('ms-winners');
+    const brand         = getSmartSelectVal('ss-brand');
+    const division      = getSmartSelectVal('ss-division');
+    const rivalry       = getSmartSelectVal('ss-rivalry');
+    const rivalryAction = getSmartSelectVal('ss-rivalry-action');
 
-  // Auto-add winners to winners catalog
-  winners.forEach(w => {
-    if (!state.catalogs.winners.includes(w)) {
-      state.catalogs.winners.push(w);
+    // Auto-feed catalogs with any new values
+    for (const v of vs)      await ensureInCatalog('wrestlers', v);
+    for (const v of winners) await ensureInCatalog('winners', v);
+    for (const v of types)   await ensureInCatalog('types', v);
+    for (const v of titles)  await ensureInCatalog('titles', v);
+    await ensureInCatalog('brands',       brand);
+    await ensureInCatalog('divisions',    division);
+    await ensureInCatalog('wrestlers',    rivalry);
+    await ensureInCatalog('rivalactions', rivalryAction);
+
+    // Handle image
+    let imageURL = state.pendingImageURL || null;
+    if (state.pendingImageFile) {
+      const tempId = state.editingMatchId || ('new_' + Date.now());
+      imageURL = await uploadImage(state.pendingImageFile, tempId);
     }
-  });
-  await saveCatalog('winners');
 
-  const data = {
-    day, month, year,
-    sortKey: makeSortKey(year, month, day),
-    type: types,
-    vs,
-    titles,
-    winners,
-    brand: document.getElementById('f-brand').value,
-    division: document.getElementById('f-division').value,
-    rivalry: document.getElementById('f-rivalry').value,
-    rivalryAction: document.getElementById('f-rivalry-action').value,
-    rating: parseFloat(document.getElementById('f-rating').value) / 2,
-    comment: document.getElementById('f-comment').value.trim(),
-    num: 0
-  };
+    const data = {
+      day, month, year,
+      sortKey: makeSortKey(year, month, day),
+      type: types, vs, titles, winners,
+      brand, division, rivalry, rivalryAction,
+      rating: parseFloat(document.getElementById('f-rating').value) / 2,
+      comment: document.getElementById('f-comment').value.trim(),
+      imageURL: imageURL || '',
+      num: 0
+    };
 
-  await saveMatch(data);
-  closeModal();
-  document.getElementById('day-detail-overlay').classList.add('hidden');
-  renderCalendar();
-  renderHistory();
-  renderStats();
-  renderCatalogs();
-  updateSidebarMeta();
+    await saveMatch(data);
+    closeModal();
+    document.getElementById('day-detail-overlay').classList.add('hidden');
+    renderCalendar();
+    renderHistory();
+    renderStats();
+    renderCatalogs();
+    updateSidebarMeta();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar lucha';
+  }
 }
 
-// ---- Edit / Delete ----
+// ============================================================
+//  EDIT / DELETE
+// ============================================================
 function editMatch(id) {
   document.getElementById('day-detail-overlay').classList.add('hidden');
   openMatchForm(id, null, null, null);
 }
+window.editMatch = editMatch;
 
 function confirmDelete(id) {
   state.pendingDeleteId = id;
   document.getElementById('confirm-overlay').classList.remove('hidden');
 }
+window.confirmDelete = confirmDelete;
 
 function setupConfirmModal() {
   document.getElementById('confirm-no').addEventListener('click', () => {
@@ -400,173 +550,327 @@ function setupConfirmModal() {
   });
 }
 
-// ---- Multi-select component ----
-function initMultiSelect(containerId, options, selected) {
+// ============================================================
+//  ADD-TO-CATALOG MODAL (inline prompt)
+// ============================================================
+function setupAddCatModal() {
+  const overlay = document.getElementById('add-cat-overlay');
+  const input   = document.getElementById('add-cat-input');
+
+  document.getElementById('add-cat-close').addEventListener('click',  () => overlay.classList.add('hidden'));
+  document.getElementById('add-cat-cancel').addEventListener('click', () => overlay.classList.add('hidden'));
+  document.getElementById('add-cat-confirm').addEventListener('click', async () => {
+    const val = input.value.trim();
+    if (!val) return;
+    overlay.classList.add('hidden');
+    if (state.addCatCallback) await state.addCatCallback(val);
+    state.addCatCallback = null;
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('add-cat-confirm').click();
+  });
+}
+
+function openAddCatModal(title, label, callback) {
+  document.getElementById('add-cat-title').textContent = title;
+  document.getElementById('add-cat-label').textContent = label;
+  document.getElementById('add-cat-input').value = '';
+  state.addCatCallback = callback;
+  document.getElementById('add-cat-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('add-cat-input').focus(), 50);
+}
+
+// ============================================================
+//  SMART SELECT — single value, alphabetical dropdown, + add
+// ============================================================
+function initSmartSelect(containerId, catalogKey, selectedValue) {
   const wrap = document.getElementById(containerId);
   wrap.innerHTML = '';
-  let selectedItems = [...selected];
+
+  let current = selectedValue || '';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'smart-select-btn' + (current ? '' : ' placeholder');
+  btn.textContent = current || '— ninguna —';
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'smart-select-dropdown';
+
+  function buildDropdown() {
+    dropdown.innerHTML = '';
+    const sorted = [...state.catalogs[catalogKey]].sort((a,b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+
+    // Empty option
+    const none = document.createElement('div');
+    none.className = 'ss-option' + (current === '' ? ' selected' : '');
+    none.textContent = '— ninguna —';
+    none.addEventListener('mousedown', e => {
+      e.preventDefault();
+      current = '';
+      btn.textContent = '— ninguna —';
+      btn.classList.add('placeholder');
+      dropdown.classList.remove('open');
+    });
+    dropdown.appendChild(none);
+
+    sorted.forEach(opt => {
+      const div = document.createElement('div');
+      div.className = 'ss-option' + (opt === current ? ' selected' : '');
+      div.textContent = opt;
+      div.addEventListener('mousedown', e => {
+        e.preventDefault();
+        current = opt;
+        btn.textContent = opt;
+        btn.classList.remove('placeholder');
+        dropdown.classList.remove('open');
+      });
+      dropdown.appendChild(div);
+    });
+
+    // Add new option
+    const addOpt = document.createElement('div');
+    addOpt.className = 'ss-option add-new';
+    addOpt.innerHTML = '+ Agregar nuevo';
+    addOpt.addEventListener('mousedown', e => {
+      e.preventDefault();
+      dropdown.classList.remove('open');
+      const labels = {
+        brands: 'Marca / Evento', divisions: 'División', wrestlers: 'Luchador',
+        rivalactions: 'Acción de rivalidad', types: 'Tipo de lucha',
+        titles: 'Campeonato', winners: 'Ganador'
+      };
+      openAddCatModal(`Agregar a ${labels[catalogKey] || catalogKey}`, labels[catalogKey] || 'Nombre', async (val) => {
+        await ensureInCatalog(catalogKey, val);
+        current = val;
+        btn.textContent = val;
+        btn.classList.remove('placeholder');
+        renderCatalogs();
+        buildDropdown();
+      });
+    });
+    dropdown.appendChild(addOpt);
+  }
+
+  btn.addEventListener('click', () => {
+    const isOpen = dropdown.classList.contains('open');
+    // Close all other dropdowns
+    document.querySelectorAll('.smart-select-dropdown.open, .ms-dropdown.open').forEach(d => d.classList.remove('open'));
+    if (!isOpen) {
+      buildDropdown();
+      dropdown.classList.add('open');
+    }
+  });
+
+  btn.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('open'), 150));
+
+  wrap._getValue = () => current;
+  buildDropdown();
+  wrap.appendChild(btn);
+  wrap.appendChild(dropdown);
+}
+
+function getSmartSelectVal(containerId) {
+  const wrap = document.getElementById(containerId);
+  return wrap._getValue ? wrap._getValue() : '';
+}
+
+// ============================================================
+//  MULTI SELECT — multiple values, alphabetical dropdown, + add
+// ============================================================
+function initMultiSelect(containerId, catalogKey, selectedItems) {
+  const wrap = document.getElementById(containerId);
+  wrap.innerHTML = '';
+  let items = [...selectedItems];
 
   function render() {
-    wrap.innerHTML = '';
-    selectedItems.forEach(item => {
+    // Keep tags and input, rebuild
+    while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+
+    items.forEach(item => {
       const tag = document.createElement('span');
       tag.className = 'ms-tag';
-      tag.innerHTML = `${item} <button onclick="removeTag(this, '${containerId}', '${item}')">×</button>`;
+      tag.innerHTML = `${escHtml(item)} <button type="button">×</button>`;
+      tag.querySelector('button').addEventListener('click', e => {
+        e.stopPropagation();
+        items = items.filter(i => i !== item);
+        render();
+      });
       wrap.appendChild(tag);
     });
 
     const inputWrap = document.createElement('div');
     inputWrap.className = 'ms-input-wrap';
+
     const input = document.createElement('input');
     input.className = 'ms-input';
-    input.placeholder = selectedItems.length === 0 ? 'Seleccionar…' : '';
+    input.placeholder = items.length === 0 ? 'Seleccionar…' : '';
+
     const dropdown = document.createElement('div');
     dropdown.className = 'ms-dropdown';
 
-    function showDropdown(filter = '') {
+    function buildDropdown(filter) {
       dropdown.innerHTML = '';
-      const filtered = options.filter(o => o.toLowerCase().includes(filter.toLowerCase()) && !selectedItems.includes(o));
-      filtered.forEach(opt => {
+      const sorted = [...state.catalogs[catalogKey]]
+        .filter(o => !items.includes(o) && o.toLowerCase().includes((filter||'').toLowerCase()))
+        .sort((a,b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+      sorted.forEach(opt => {
         const div = document.createElement('div');
         div.className = 'ms-option';
         div.textContent = opt;
         div.addEventListener('mousedown', e => {
           e.preventDefault();
-          selectedItems.push(opt);
+          items.push(opt);
           render();
         });
         dropdown.appendChild(div);
       });
-      dropdown.classList.toggle('open', filtered.length > 0);
+
+      // Add new
+      const addOpt = document.createElement('div');
+      addOpt.className = 'ms-option add-new';
+      addOpt.textContent = '+ Agregar nuevo';
+      addOpt.addEventListener('mousedown', e => {
+        e.preventDefault();
+        dropdown.classList.remove('open');
+        const labels = {
+          wrestlers: 'Luchador', types: 'Tipo de lucha', titles: 'Campeonato',
+          winners: 'Ganador', brands: 'Marca', divisions: 'División', rivalactions: 'Acción'
+        };
+        openAddCatModal(`Agregar a ${labels[catalogKey] || catalogKey}`, labels[catalogKey] || 'Nombre', async (val) => {
+          await ensureInCatalog(catalogKey, val);
+          items.push(val);
+          renderCatalogs();
+          render();
+        });
+      });
+      dropdown.appendChild(addOpt);
+
+      dropdown.classList.toggle('open', sorted.length > 0 || true);
     }
 
-    input.addEventListener('input', e => showDropdown(e.target.value));
-    input.addEventListener('focus', () => showDropdown(input.value));
-    input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('open'), 150));
+    input.addEventListener('input',  e => buildDropdown(e.target.value));
+    input.addEventListener('focus',  () => buildDropdown(input.value));
+    input.addEventListener('blur',   () => setTimeout(() => dropdown.classList.remove('open'), 150));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && input.value.trim()) {
+        const val = input.value.trim();
+        if (!items.includes(val)) { items.push(val); }
+        input.value = '';
+        dropdown.classList.remove('open');
+        render();
+      }
+    });
 
     inputWrap.appendChild(input);
     inputWrap.appendChild(dropdown);
     wrap.appendChild(inputWrap);
-    wrap._selected = selectedItems;
+    wrap._getSelected = () => items;
   }
 
-  wrap._getSelected = () => selectedItems;
+  wrap._getSelected = () => items;
   render();
 }
-
-window.removeTag = function(btn, containerId, item) {
-  const wrap = document.getElementById(containerId);
-  const idx = wrap._getSelected ? wrap._getSelected().indexOf(item) : -1;
-  if (idx >= 0) wrap._getSelected().splice(idx, 1);
-  const inputWrap = wrap.querySelector('.ms-input-wrap');
-  const sibling = btn.closest('.ms-tag');
-  if (sibling) sibling.remove();
-};
 
 function getMultiSelected(containerId) {
   const wrap = document.getElementById(containerId);
   return wrap._getSelected ? [...wrap._getSelected()] : [];
 }
 
-// ---- Selects ----
-function populateSelect(id, options, selected) {
-  const sel = document.getElementById(id);
-  sel.innerHTML = '';
-  const hasEmpty = options[0] === '';
-  (hasEmpty ? options : ['', ...options]).forEach(opt => {
-    const o = document.createElement('option');
-    o.value = opt;
-    o.textContent = opt || '— ninguna —';
-    if (opt === selected) o.selected = true;
-    sel.appendChild(o);
-  });
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ---- History ----
+// ============================================================
+//  HISTORY
+// ============================================================
 function renderHistory() {
-  const list = document.getElementById('history-list');
-  const brandFilter = document.getElementById('filter-brand').value;
-  const typeFilter = document.getElementById('filter-type').value;
+  const brandFilter  = document.getElementById('filter-brand').value;
+  const typeFilter   = document.getElementById('filter-type').value;
   const resultFilter = document.getElementById('filter-result').value;
 
-  // Populate filters
-  const brands = ['', ...new Set(state.matches.map(m => m.brand).filter(Boolean))];
-  const curBrand = document.getElementById('filter-brand').value;
-  document.getElementById('filter-brand').innerHTML = brands.map(b => `<option value="${b}" ${b === curBrand ? 'selected':''}>` + (b || 'Todas las marcas') + '</option>').join('');
+  // Repopulate filter selects
+  const brands = ['', ...new Set(state.matches.map(m => m.brand).filter(Boolean))].sort();
+  const cb = document.getElementById('filter-brand').value;
+  document.getElementById('filter-brand').innerHTML =
+    brands.map(b => `<option value="${b}" ${b===cb?'selected':''}>${b||'Todas las marcas'}</option>`).join('');
 
-  const types = ['', ...state.catalogs.types];
-  const curType = document.getElementById('filter-type').value;
-  document.getElementById('filter-type').innerHTML = types.map(t => `<option value="${t}" ${t === curType ? 'selected':''}>` + (t || 'Todos los tipos') + '</option>').join('');
+  const types = ['', ...new Set(state.matches.flatMap(m => m.type||[]).filter(Boolean))].sort();
+  const ct = document.getElementById('filter-type').value;
+  document.getElementById('filter-type').innerHTML =
+    types.map(t => `<option value="${t}" ${t===ct?'selected':''}>${t||'Todos los tipos'}</option>`).join('');
 
-  const realMatches = state.matches.filter(m => !isPromo(m));
   let filtered = [...state.matches].reverse();
-
-  if (brandFilter) filtered = filtered.filter(m => m.brand === brandFilter);
-  if (typeFilter) filtered = filtered.filter(m => m.type?.includes(typeFilter));
+  if (brandFilter)  filtered = filtered.filter(m => m.brand === brandFilter);
+  if (typeFilter)   filtered = filtered.filter(m => m.type?.includes(typeFilter));
   if (resultFilter) filtered = filtered.filter(m => getResultClass(m) === resultFilter);
 
+  const list = document.getElementById('history-list');
   list.innerHTML = '';
 
   if (filtered.length === 0) {
     list.innerHTML = '<div class="empty-state"><p>No hay luchas registradas aún.<br>Haz clic en un día del calendario para agregar la primera.</p></div>';
-    return;
+  } else {
+    filtered.forEach(m => {
+      const rc = getResultClass(m);
+      const labelMap = { win:'Victoria', loss:'Derrota', draw:'Empate', promo:'Promo' };
+      const titleStr = isPromo(m) ? 'PROMO' : (m.vs?.length > 0 ? 'vs ' + m.vs.join(' & ') : 'Sin rival');
+      const stars    = m.rating > 0 ? '★ ' + m.rating.toFixed(1) : '';
+
+      const card = document.createElement('div');
+      card.className = `match-card ${rc}`;
+      card.innerHTML = `
+        <div class="match-num">#${String(m.num||0).padStart(3,'0')}</div>
+        <div class="match-info">
+          <div class="match-title">${escHtml(titleStr)}</div>
+          <div class="match-meta">
+            ${(m.type||[]).map(t=>`<span class="match-tag">${escHtml(t)}</span>`).join('')}
+            ${m.brand ? `<span class="match-tag">${escHtml(m.brand)}</span>` : ''}
+            ${(m.titles||[]).length > 0 ? `<span class="match-tag" style="color:var(--accent);">🏆 ${escHtml(m.titles.join(', '))}</span>` : ''}
+            ${m.rivalry ? `<span class="match-tag" style="color:var(--promo);">Rivalidad: ${escHtml(m.rivalry)}</span>` : ''}
+          </div>
+          ${m.comment ? `<div class="match-comment">${escHtml(m.comment)}</div>` : ''}
+          ${m.imageURL ? `<img class="match-thumb" src="${m.imageURL}" alt="Imagen del combate" loading="lazy">` : ''}
+        </div>
+        <div class="match-right">
+          <span class="match-result-badge ${rc}">${labelMap[rc]}</span>
+          ${stars ? `<span class="match-stars">${stars}</span>` : ''}
+          <span class="match-date-label">${formatDateLabel(m.year, m.month, m.day)}</span>
+          <div class="match-actions">
+            <button class="btn-icon" onclick="editMatch('${m.id}')">Editar</button>
+            <button class="btn-icon del" onclick="confirmDelete('${m.id}')">Eliminar</button>
+          </div>
+        </div>`;
+      list.appendChild(card);
+    });
   }
 
-  filtered.forEach(m => {
-    const rc = getResultClass(m);
-    const card = document.createElement('div');
-    card.className = `match-card ${rc}`;
-
-    const stars = m.rating > 0 ? '★ ' + m.rating.toFixed(1) : '';
-    const titleStr = isPromo(m) ? 'PROMO' : (m.vs?.length > 0 ? 'vs ' + m.vs.join(' & ') : 'Sin rival');
-    const labelMap = { win: 'Victoria', loss: 'Derrota', draw: 'Empate', promo: 'Promo' };
-
-    card.innerHTML = `
-      <div class="match-num">#${String(m.num || 0).padStart(3,'0')}</div>
-      <div class="match-info">
-        <div class="match-title">${titleStr}</div>
-        <div class="match-meta">
-          ${m.type?.map(t => `<span class="match-tag">${t}</span>`).join('') || ''}
-          ${m.brand ? `<span class="match-tag">${m.brand}</span>` : ''}
-          ${m.titles?.length > 0 ? `<span class="match-tag" style="color:var(--accent);">🏆 ${m.titles.join(', ')}</span>` : ''}
-          ${m.rivalry ? `<span class="match-tag" style="color:var(--promo);">Rivalidad: ${m.rivalry}</span>` : ''}
-        </div>
-        ${m.comment ? `<div class="match-comment">${m.comment}</div>` : ''}
-      </div>
-      <div class="match-right">
-        <span class="match-result-badge ${rc}">${labelMap[rc]}</span>
-        ${stars ? `<span class="match-stars">${stars}</span>` : ''}
-        <span class="match-date-label">${formatDateLabel(m.year, m.month, m.day)}</span>
-        <div class="match-actions">
-          <button class="btn-icon" onclick="editMatch('${m.id}')">Editar</button>
-          <button class="btn-icon del" onclick="confirmDelete('${m.id}')">Eliminar</button>
-        </div>
-      </div>`;
-    list.appendChild(card);
-  });
-
-  // Re-attach filter listeners
   ['filter-brand','filter-type','filter-result'].forEach(id => {
     document.getElementById(id).onchange = renderHistory;
   });
 }
 
-// ---- Stats ----
+// ============================================================
+//  STATS
+// ============================================================
 function renderStats() {
-  const realMatches = state.matches.filter(m => !isPromo(m));
-  const total = realMatches.length;
-  const wins = realMatches.filter(m => getResultClass(m) === 'win').length;
-  const losses = realMatches.filter(m => getResultClass(m) === 'loss').length;
-  const draws = realMatches.filter(m => getResultClass(m) === 'draw').length;
-  const rated = realMatches.filter(m => m.rating > 0);
-  const avgRating = rated.length > 0 ? (rated.reduce((s,m) => s + m.rating, 0) / rated.length).toFixed(2) : '—';
-  const winPct = total > 0 ? Math.round(wins / total * 100) : 0;
+  const real  = state.matches.filter(m => !isPromo(m));
+  const total = real.length;
+  const wins  = real.filter(m => getResultClass(m) === 'win').length;
+  const losses= real.filter(m => getResultClass(m) === 'loss').length;
+  const draws = real.filter(m => getResultClass(m) === 'draw').length;
+  const rated = real.filter(m => m.rating > 0);
+  const avg   = rated.length > 0 ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(2) : '—';
+  const winPct= total > 0 ? Math.round(wins/total*100) : 0;
 
   document.getElementById('stat-general').innerHTML = `
     <div class="stat-card-item"><div class="sc-label">Luchas</div><div class="sc-val">${total}</div></div>
     <div class="stat-card-item"><div class="sc-label">Victorias</div><div class="sc-val win">${wins}</div></div>
     <div class="stat-card-item"><div class="sc-label">% Victoria</div><div class="sc-val gold">${winPct}%</div></div>
-    <div class="stat-card-item"><div class="sc-label">Rating prom.</div><div class="sc-val gold">${avgRating === '—' ? '—' : '★ ' + avgRating}</div></div>
+    <div class="stat-card-item"><div class="sc-label">Rating prom.</div><div class="sc-val gold">${avg==='—'?'—':'★'+avg}</div></div>
     <div class="stat-card-item"><div class="sc-label">Derrotas</div><div class="sc-val loss">${losses}</div></div>
     <div class="stat-card-item"><div class="sc-label">Empates</div><div class="sc-val">${draws}</div></div>`;
 
@@ -574,135 +878,121 @@ function renderStats() {
   const typeEl = document.getElementById('stat-by-type');
   typeEl.innerHTML = '';
   const byType = {};
-  realMatches.forEach(m => {
-    (m.type || []).forEach(t => {
-      if (!byType[t]) byType[t] = { total: 0, wins: 0 };
+  real.forEach(m => {
+    (m.type||[]).forEach(t => {
+      if (!byType[t]) byType[t] = { total:0, wins:0 };
       byType[t].total++;
-      if (getResultClass(m) === 'win') byType[t].wins++;
+      if (getResultClass(m)==='win') byType[t].wins++;
     });
   });
-  Object.entries(byType).sort((a,b) => b[1].total - a[1].total).forEach(([type, data]) => {
-    const pct = Math.round(data.wins / data.total * 100);
+  Object.entries(byType).sort((a,b)=>b[1].total-a[1].total).forEach(([type,data]) => {
+    const pct = Math.round(data.wins/data.total*100);
     typeEl.innerHTML += `<div class="bar-item">
-      <div class="bar-header"><span class="bar-label">${type} (${data.total})</span><span class="bar-pct">${pct}%</span></div>
+      <div class="bar-header"><span class="bar-label">${escHtml(type)} (${data.total})</span><span class="bar-pct">${pct}%</span></div>
       <div class="bar-track"><div class="bar-fill win" style="width:${pct}%"></div></div>
     </div>`;
   });
-  if (typeEl.innerHTML === '') typeEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
+  if (!typeEl.innerHTML) typeEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
 
   // By brand
   const brandEl = document.getElementById('stat-by-brand');
   brandEl.innerHTML = '';
   const byBrand = {};
-  state.matches.forEach(m => {
-    if (m.brand) {
-      byBrand[m.brand] = (byBrand[m.brand] || 0) + 1;
-    }
-  });
+  state.matches.forEach(m => { if (m.brand) byBrand[m.brand] = (byBrand[m.brand]||0)+1; });
   const totalAll = state.matches.length;
-  Object.entries(byBrand).sort((a,b) => b[1] - a[1]).forEach(([brand, count]) => {
-    const pct = Math.round(count / totalAll * 100);
+  Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).forEach(([brand,count]) => {
+    const pct = Math.round(count/totalAll*100);
     brandEl.innerHTML += `<div class="bar-item">
-      <div class="bar-header"><span class="bar-label">${brand}</span><span class="bar-pct">${count} luchas</span></div>
+      <div class="bar-header"><span class="bar-label">${escHtml(brand)}</span><span class="bar-pct">${count} luchas</span></div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
     </div>`;
   });
-  if (brandEl.innerHTML === '') brandEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
+  if (!brandEl.innerHTML) brandEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
 
   // Rivalries
   const rivEl = document.getElementById('stat-rivalries');
   rivEl.innerHTML = '';
   const rivals = {};
-  realMatches.forEach(m => {
+  real.forEach(m => {
     if (m.rivalry) {
-      if (!rivals[m.rivalry]) rivals[m.rivalry] = { total: 0, wins: 0, losses: 0, draws: 0 };
+      if (!rivals[m.rivalry]) rivals[m.rivalry] = { total:0, wins:0, losses:0, draws:0 };
       rivals[m.rivalry].total++;
       const rc = getResultClass(m);
-      if (rc === 'win') rivals[m.rivalry].wins++;
-      else if (rc === 'loss') rivals[m.rivalry].losses++;
+      if (rc==='win')  rivals[m.rivalry].wins++;
+      else if (rc==='loss') rivals[m.rivalry].losses++;
       else rivals[m.rivalry].draws++;
     }
   });
-  Object.entries(rivals).sort((a,b) => b[1].total - a[1].total).forEach(([rival, data]) => {
+  Object.entries(rivals).sort((a,b)=>b[1].total-a[1].total).forEach(([rival,data]) => {
     rivEl.innerHTML += `<div class="rivalry-item">
-      <span class="rivalry-name">${rival}</span>
-      <span class="rivalry-record" style="color:var(--win)">${data.wins}V</span>
-      <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
-      <span class="rivalry-record" style="color:var(--loss)">${data.losses}D</span>
-      <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
-      <span class="rivalry-record" style="color:var(--draw)">${data.draws}E</span>
+      <span class="rivalry-name">${escHtml(rival)}</span>
+      <span style="display:flex;gap:6px;align-items:center;">
+        <span style="color:var(--win);font-size:12px;">${data.wins}V</span>
+        <span style="color:var(--text-ter);font-size:11px;">·</span>
+        <span style="color:var(--loss);font-size:12px;">${data.losses}D</span>
+        <span style="color:var(--text-ter);font-size:11px;">·</span>
+        <span style="color:var(--draw);font-size:12px;">${data.draws}E</span>
+      </span>
     </div>`;
   });
-  if (rivEl.innerHTML === '') rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';
+  if (!rivEl.innerHTML) rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';
 
-  // Titles (days)
+  // Title days
   const titlesEl = document.getElementById('stat-titles');
   titlesEl.innerHTML = '';
   const titleDays = calcTitleDays();
-  Object.entries(titleDays).forEach(([title, days]) => {
+  Object.entries(titleDays).forEach(([title,days]) => {
     titlesEl.innerHTML += `<div class="title-item">
-      <span class="title-name">${title}</span>
+      <span class="title-name">${escHtml(title)}</span>
       <span class="title-days">${days} días</span>
     </div>`;
   });
-  if (titlesEl.innerHTML === '') titlesEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin títulos aún</p>';
+  if (!titlesEl.innerHTML) titlesEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin títulos aún</p>';
 }
 
 function calcTitleDays() {
-  const sorted = [...state.matches].sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
-  const titleActive = {};
-  const titleTotal = {};
-
-  sorted.forEach((m, idx) => {
-    const heldNow = m.titles || [];
-    const dayNum = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
-
-    // Check which titles were held before this match
-    Object.keys(titleActive).forEach(title => {
-      if (!heldNow.includes(title)) {
-        // Lost title
-        const prevDay = titleActive[title];
-        titleTotal[title] = (titleTotal[title] || 0) + (dayNum - prevDay);
-        delete titleActive[title];
-      }
+  const sorted = [...state.matches].sort((a,b)=>(a.sortKey||'').localeCompare(b.sortKey||''));
+  const active = {}, total = {};
+  sorted.forEach(m => {
+    const held  = m.titles || [];
+    const dayN  = (m.year-1)*12*28 + m.month*28 + m.day;
+    Object.keys(active).forEach(t => {
+      if (!held.includes(t)) { total[t] = (total[t]||0) + (dayN - active[t]); delete active[t]; }
     });
-
-    // New titles
-    heldNow.forEach(title => {
-      if (!titleActive[title]) {
-        titleActive[title] = dayNum;
-      }
-    });
+    held.forEach(t => { if (!active[t]) active[t] = dayN; });
   });
-
-  // Still active titles
-  const today = (state.currentYear - 1) * 12 * 28 + state.currentMonth * 28 + 28;
-  Object.keys(titleActive).forEach(title => {
-    titleTotal[title] = (titleTotal[title] || 0) + (today - titleActive[title]);
-  });
-
-  return titleTotal;
+  const today = (state.currentYear-1)*12*28 + state.currentMonth*28 + 28;
+  Object.keys(active).forEach(t => { total[t] = (total[t]||0) + (today - active[t]); });
+  return total;
 }
 
-// ---- Catalogs ----
+// ============================================================
+//  CATALOGS VIEW
+// ============================================================
 function renderCatalogs() {
   const cats = [
-    { id: 'cat-wrestlers', key: 'wrestlers' },
-    { id: 'cat-types', key: 'types' },
-    { id: 'cat-brands', key: 'brands' },
-    { id: 'cat-titles', key: 'titles' },
-    { id: 'cat-divisions', key: 'divisions' },
-    { id: 'cat-winners', key: 'winners' },
-    { id: 'cat-rivalactions', key: 'rivalactions' }
+    { id:'cat-wrestlers',    key:'wrestlers'    },
+    { id:'cat-types',        key:'types'        },
+    { id:'cat-brands',       key:'brands'       },
+    { id:'cat-titles',       key:'titles'       },
+    { id:'cat-divisions',    key:'divisions'    },
+    { id:'cat-winners',      key:'winners'      },
+    { id:'cat-rivalactions', key:'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
-    const card = document.getElementById(id);
+    const card   = document.getElementById(id);
     const listEl = card.querySelector('.cat-list');
     listEl.innerHTML = '';
-    state.catalogs[key].forEach((item, idx) => {
+    const sorted = [...state.catalogs[key]].sort((a,b) => a.localeCompare(b,'es',{sensitivity:'base'}));
+    sorted.forEach(item => {
       const div = document.createElement('div');
       div.className = 'cat-item';
-      div.innerHTML = `<span>${item}</span><button onclick="removeCatalogItem('${key}', ${idx})">×</button>`;
+      div.innerHTML = `<span>${escHtml(item)}</span><button data-key="${key}" data-item="${escHtml(item)}">×</button>`;
+      div.querySelector('button').addEventListener('click', async () => {
+        state.catalogs[key] = state.catalogs[key].filter(i => i !== item);
+        await saveCatalog(key);
+        renderCatalogs();
+      });
       listEl.appendChild(div);
     });
   });
@@ -710,49 +1000,46 @@ function renderCatalogs() {
 
 function setupCatalogEditors() {
   const cats = [
-    { id: 'cat-wrestlers', key: 'wrestlers' },
-    { id: 'cat-types', key: 'types' },
-    { id: 'cat-brands', key: 'brands' },
-    { id: 'cat-titles', key: 'titles' },
-    { id: 'cat-divisions', key: 'divisions' },
-    { id: 'cat-winners', key: 'winners' },
-    { id: 'cat-rivalactions', key: 'rivalactions' }
+    { id:'cat-wrestlers',    key:'wrestlers'    },
+    { id:'cat-types',        key:'types'        },
+    { id:'cat-brands',       key:'brands'       },
+    { id:'cat-titles',       key:'titles'       },
+    { id:'cat-divisions',    key:'divisions'    },
+    { id:'cat-winners',      key:'winners'      },
+    { id:'cat-rivalactions', key:'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
-    const card = document.getElementById(id);
+    const card  = document.getElementById(id);
     const input = card.querySelector('input');
-    const btn = card.querySelector('.cat-add button');
-    const add = async () => {
+    const btn   = card.querySelector('.cat-add button');
+    const add   = async () => {
       const val = input.value.trim();
-      if (!val || state.catalogs[key].includes(val)) return;
-      state.catalogs[key].push(val);
-      await saveCatalog(key);
+      if (!val) return;
+      await ensureInCatalog(key, val);
       input.value = '';
       renderCatalogs();
     };
     btn.addEventListener('click', add);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    input.addEventListener('keydown', e => { if (e.key==='Enter') add(); });
   });
 }
 
-window.removeCatalogItem = async function(key, idx) {
-  state.catalogs[key].splice(idx, 1);
-  await saveCatalog(key);
-  renderCatalogs();
-};
-
-// ---- Sidebar meta ----
+// ============================================================
+//  SIDEBAR META
+// ============================================================
 function updateSidebarMeta() {
-  const real = state.matches.filter(m => !isPromo(m));
-  const wins = real.filter(m => getResultClass(m) === 'win').length;
-  const losses = real.filter(m => getResultClass(m) === 'loss').length;
+  const real  = state.matches.filter(m => !isPromo(m));
+  const wins  = real.filter(m => getResultClass(m)==='win').length;
+  const losses= real.filter(m => getResultClass(m)==='loss').length;
   const rated = real.filter(m => m.rating > 0);
-  const avg = rated.length > 0 ? (rated.reduce((s,m) => s+m.rating, 0) / rated.length).toFixed(1) : '—';
-  document.getElementById('meta-total').textContent = real.length;
-  document.getElementById('meta-wins').textContent = wins;
+  const avg   = rated.length > 0 ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(1) : '—';
+  document.getElementById('meta-total').textContent  = real.length;
+  document.getElementById('meta-wins').textContent   = wins;
   document.getElementById('meta-losses').textContent = losses;
-  document.getElementById('meta-rating').textContent = avg === '—' ? '—' : '★' + avg;
+  document.getElementById('meta-rating').textContent = avg==='—' ? '—' : '★'+avg;
 }
 
-// ---- Start ----
+// ============================================================
+//  START
+// ============================================================
 init();
