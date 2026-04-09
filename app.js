@@ -321,11 +321,11 @@ function isPromo(match) {
 // ============================================================
 function setupCalendarNav() {
   document.getElementById('prev-month').addEventListener('click', () => {
+    if (state.currentMonth === 0 && state.currentYear === 1) return;
     state.currentMonth--;
     if (state.currentMonth < 0) {
       state.currentMonth = 11;
       state.currentYear--;
-      if (state.currentYear < 1) state.currentYear = 1;
     }
     renderCalendar();
   });
@@ -406,6 +406,14 @@ function openYearPicker() {
 function renderCalendar() {
   document.getElementById('cal-month-title').textContent = MONTHS[state.currentMonth];
   document.getElementById('cal-year-title').textContent  = `Año ${state.currentYear}`;
+
+  // Disable prev button when at the very beginning (Enero, Año 1)
+  const prevBtn = document.getElementById('prev-month');
+  const atStart = state.currentMonth === 0 && state.currentYear === 1;
+  prevBtn.disabled = atStart;
+  prevBtn.style.opacity  = atStart ? '0.3' : '';
+  prevBtn.style.cursor   = atStart ? 'not-allowed' : '';
+  prevBtn.style.borderColor = atStart ? 'var(--border)' : '';
 
   const grid = document.getElementById('cal-grid');
   grid.innerHTML = '';

@@ -295,7 +295,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   text-transform: uppercase;
   letter-spacing: 0.8px;
   background: var(--bg3);
-  border-right: 1px solid var(--border2);
+  border-right: none;
   border-bottom: 1px solid var(--border2);
   writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -303,7 +303,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 
 .cal-cell {
-  border-right: 1px solid var(--border2);
+  border-left: 1px solid var(--border2);
   border-bottom: 1px solid var(--border2);
   min-height: 80px;
   padding: 8px;
@@ -311,8 +311,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   transition: background 0.12s;
   position: relative;
 }
-/* Remove right border on the 7th day column (Sunday) — every 7th cell */
-.cal-cell:nth-child(7n) { border-right: none; }
 .cal-cell:hover { background: var(--bg3); }
 
 .cal-cell-num {
