@@ -1,5 +1,14 @@
 // ============================================================
 //  WWE 2K25 — SUPERSTAR MODE — app.js
+//
+//  GUIA DE PERSONALIZACIÓN (texto visible en la app):
+//  ─────────────────────────────────────────────────
+//  Títulos de secciones:     index.html → busca <h1> y <h3>
+//  Nombre de la app:         index.html → logo-wwe / logo-sub
+//  Textos del formulario:    index.html → <label> dentro de #match-form
+//  Nombres de meses/semanas: app.js     → MONTHS / WEEKS (líneas 5-6)
+//  Placeholder catálogos:    index.html → placeholder="..." en cat-*
+//  Textos de botones:        index.html → busca btn-save / btn-cancel
 // ============================================================
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -7,8 +16,8 @@ const WEEKS  = ['Semana 1','Semana 2','Semana 3','Semana 4'];
 
 // ---- State ----
 let state = {
-  currentMonth: 0,
-  currentYear: 1,
+  currentMonth: parseInt(localStorage.getItem('lastMonth') ?? '0', 10),
+  currentYear:  Math.max(1, parseInt(localStorage.getItem('lastYear')  ?? '1', 10)),
   matches: [],
   catalogs: {
     wrestlers:    [],
@@ -325,6 +334,73 @@ function setupCalendarNav() {
     if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
     renderCalendar();
   });
+
+  // Year scroll: click label to open picker, or use mouse wheel
+  const yearEl = document.getElementById('cal-year-title');
+  yearEl.style.cursor = 'pointer';
+  yearEl.title = 'Clic para cambiar año';
+
+  yearEl.addEventListener('click', openYearPicker);
+  yearEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    state.currentYear += e.deltaY < 0 ? 1 : -1;
+    if (state.currentYear < 1) state.currentYear = 1;
+    renderCalendar();
+  }, { passive: false });
+}
+
+function openYearPicker() {
+  const existing = document.getElementById('year-picker-overlay');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'year-picker-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);`;
+
+  const box = document.createElement('div');
+  box.style.cssText = `background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:280px;max-width:90vw;`;
+
+  const title = document.createElement('p');
+  title.textContent = 'Ir al año';
+  title.style.cssText = `font-family:var(--font-head);font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;color:var(--text);`;
+  box.appendChild(title);
+
+  // Determine year range: 1 to max match year + 2
+  const maxYear = Math.max(state.currentYear, ...state.matches.map(m => m.year || 1), 1);
+  const years = Array.from({ length: maxYear + 2 }, (_, i) => i + 1);
+
+  const grid = document.createElement('div');
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:240px;overflow-y:auto;`;
+
+  years.forEach(y => {
+    const btn = document.createElement('button');
+    btn.textContent = `Año ${y}`;
+    const isActive = y === state.currentYear;
+    btn.style.cssText = `background:${isActive ? 'var(--accent)' : 'var(--bg3)'};color:${isActive ? 'var(--bg)' : 'var(--text-sec)'};border:1px solid ${isActive ? 'var(--accent)' : 'var(--border2)'};border-radius:var(--radius-sm);padding:7px 4px;font-family:var(--font-body);font-size:12px;cursor:pointer;transition:all .12s;`;
+    btn.addEventListener('click', () => {
+      state.currentYear = y;
+      renderCalendar();
+      overlay.remove();
+    });
+    grid.appendChild(btn);
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'Cancelar';
+  closeBtn.style.cssText = `margin-top:12px;background:none;border:1px solid var(--border2);color:var(--text-sec);padding:8px 16px;border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;cursor:pointer;width:100%;`;
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  box.appendChild(grid);
+  box.appendChild(closeBtn);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  // Scroll active year into view
+  setTimeout(() => {
+    const active = grid.querySelector(`button[style*="var(--accent)"]`);
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }, 50);
 }
 
 function renderCalendar() {
@@ -407,6 +483,7 @@ function showDayDetailModal(matches, day, month, year) {
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
         <span class="match-result-badge ${rc}">${labelMap[rc]}</span>
+        <button class="btn-icon" onclick="viewMatch('${m.id}')">Ver</button>
         <button class="btn-icon" onclick="editMatch('${m.id}')">Editar</button>
         <button class="btn-icon del" onclick="confirmDelete('${m.id}')">×</button>
       </div>`;
@@ -475,28 +552,6 @@ function openMatchForm(matchId, day, month, year) {
   // Image
   resetImageUpload(match?.imageURL || null);
 
-  // Existing matches on this day (for context)
-  const dayMatches = state.matches.filter(m =>
-    m.day === day && m.month === month && m.year === year && m.id !== matchId
-  );
-  const daySection = document.getElementById('day-matches-section');
-  if (dayMatches.length > 0) {
-    daySection.classList.remove('hidden');
-    const list = document.getElementById('day-matches-list');
-    list.innerHTML = '';
-    dayMatches.forEach(m => {
-      const div = document.createElement('div');
-      div.className = 'mini-match';
-      div.innerHTML = `<div class="mini-match-info">
-        <div class="mini-match-title">${m.vs?.join(' vs ') || 'Sin rival'}</div>
-        <div class="mini-match-sub">${m.type?.join(', ') || ''}</div>
-      </div>`;
-      list.appendChild(div);
-    });
-  } else {
-    daySection.classList.add('hidden');
-  }
-
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -556,6 +611,11 @@ async function handleSave() {
     };
 
     await saveMatch(data);
+    // Remember last-edited month/year so calendar opens there next time
+    state.currentMonth = month;
+    state.currentYear  = year;
+    localStorage.setItem('lastMonth', month);
+    localStorage.setItem('lastYear',  year);
     closeModal();
     document.getElementById('day-detail-overlay').classList.add('hidden');
     renderCalendar();
@@ -578,6 +638,44 @@ function editMatch(id) {
 }
 window.editMatch = editMatch;
 
+function viewMatch(id) {
+  document.getElementById('day-detail-overlay').classList.add('hidden');
+  const m = state.matches.find(x => x.id === id);
+  if (!m) return;
+  const rc = getResultClass(m);
+  const labelMap = { win:'Victoria', loss:'Derrota', draw:'Empate', promo:'Promo' };
+  const stars = m.rating > 0 ? '★'.repeat(Math.round(m.rating)) + ' ' + m.rating.toFixed(1) : 'Sin calificación';
+
+  const overlay = document.getElementById('view-match-overlay');
+  document.getElementById('vm-title').textContent    = isPromo(m) ? 'PROMO' : (m.vs?.length > 0 ? 'vs ' + m.vs.join(' & ') : 'Sin rival');
+  document.getElementById('vm-date').textContent     = formatDateLabel(m.year, m.month, m.day);
+  document.getElementById('vm-result').textContent   = labelMap[rc];
+  document.getElementById('vm-result').className     = 'match-result-badge ' + rc;
+  document.getElementById('vm-type').textContent     = m.type?.join(', ') || '—';
+  document.getElementById('vm-brand').textContent    = m.brand || '—';
+  document.getElementById('vm-division').textContent = m.division || '—';
+  document.getElementById('vm-titles').textContent   = m.titles?.join(', ') || '—';
+  document.getElementById('vm-winners').textContent  = m.winners?.join(', ') || '—';
+  document.getElementById('vm-rivalry').textContent  = m.rivalry || '—';
+  document.getElementById('vm-action').textContent   = m.rivalryAction || '—';
+  document.getElementById('vm-rating').textContent   = stars;
+  document.getElementById('vm-comment').textContent  = m.comment || '—';
+  document.getElementById('vm-num').textContent      = '#' + String(m.num||0).padStart(3,'0');
+
+  const imgWrap = document.getElementById('vm-image-wrap');
+  if (m.imageURL) {
+    imgWrap.innerHTML = `<img src="${m.imageURL}" alt="Imagen del combate" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);">`;
+    imgWrap.style.display = 'block';
+  } else {
+    imgWrap.innerHTML = '';
+    imgWrap.style.display = 'none';
+  }
+
+  overlay.dataset.matchId = id;
+  overlay.classList.remove('hidden');
+}
+window.viewMatch = viewMatch;
+
 function confirmDelete(id) {
   state.pendingDeleteId = id;
   document.getElementById('confirm-overlay').classList.remove('hidden');
@@ -585,6 +683,17 @@ function confirmDelete(id) {
 window.confirmDelete = confirmDelete;
 
 function setupConfirmModal() {
+  // View match modal: edit button + backdrop close
+  const vmOverlay = document.getElementById('view-match-overlay');
+  document.getElementById('vm-edit-btn').addEventListener('click', () => {
+    const id = vmOverlay.dataset.matchId;
+    vmOverlay.classList.add('hidden');
+    if (id) editMatch(id);
+  });
+  vmOverlay.addEventListener('click', e => {
+    if (e.target === vmOverlay) vmOverlay.classList.add('hidden');
+  });
+
   document.getElementById('confirm-no').addEventListener('click', () => {
     document.getElementById('confirm-overlay').classList.add('hidden');
     state.pendingDeleteId = null;
@@ -893,6 +1002,7 @@ function renderHistory() {
           ${stars ? `<span class="match-stars">${stars}</span>` : ''}
           <span class="match-date-label">${formatDateLabel(m.year, m.month, m.day)}</span>
           <div class="match-actions">
+            <button class="btn-icon" onclick="viewMatch('${m.id}')">Ver</button>
             <button class="btn-icon" onclick="editMatch('${m.id}')">Editar</button>
             <button class="btn-icon del" onclick="confirmDelete('${m.id}')">Eliminar</button>
           </div>
@@ -1001,6 +1111,112 @@ function renderStats() {
     </div>`;
   });
   if (!titlesEl.innerHTML) titlesEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin títulos aún</p>';
+
+  // Charts
+  renderCharts(real, wins, losses, draws, byType, byBrand);
+}
+
+function renderCharts(real, wins, losses, draws, byType, byBrand) {
+  // ── Donut: W/L/D ──
+  const donutEl = document.getElementById('chart-wld');
+  if (!donutEl) return;
+  const total = wins + losses + draws;
+  if (total === 0) {
+    donutEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;text-align:center;padding:20px 0;">Sin datos aún</p>';
+  } else {
+    const seg = (val, offset, color) => {
+      if (val === 0) return '';
+      const pct = val / total;
+      const dash = pct * 100;
+      const gap  = 100 - dash;
+      return `<circle cx="20" cy="20" r="15" fill="none" stroke="${color}" stroke-width="8"
+        stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}"
+        style="transform:rotate(-90deg);transform-origin:20px 20px"/>`;
+    };
+    const wOff = 0;
+    const lOff = -(wins/total*100);
+    const dOff = -((wins+losses)/total*100);
+    const pctW = Math.round(wins/total*100);
+    const pctL = Math.round(losses/total*100);
+    const pctD = Math.round(draws/total*100);
+    donutEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <svg viewBox="0 0 40 40" width="110" height="110" style="flex-shrink:0;">
+          ${seg(wins,   wOff, 'var(--win)')}
+          ${seg(losses, lOff, 'var(--loss)')}
+          ${seg(draws,  dOff, 'var(--draw)')}
+          <text x="20" y="18" text-anchor="middle" font-size="6" fill="var(--text)" font-family="var(--font-head)" font-weight="700">${total}</text>
+          <text x="20" y="25" text-anchor="middle" font-size="3.5" fill="var(--text-ter)" font-family="var(--font-body)">luchas</text>
+        </svg>
+        <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:100px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="display:flex;align-items:center;gap:6px;color:var(--win);"><span style="width:8px;height:8px;border-radius:50%;background:var(--win);display:inline-block;"></span>Victorias</span>
+            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--win);">${wins} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctW}%</span></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="display:flex;align-items:center;gap:6px;color:var(--loss);"><span style="width:8px;height:8px;border-radius:50%;background:var(--loss);display:inline-block;"></span>Derrotas</span>
+            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--loss);">${losses} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctL}%</span></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="display:flex;align-items:center;gap:6px;color:var(--draw);"><span style="width:8px;height:8px;border-radius:50%;background:var(--draw);display:inline-block;"></span>Empates</span>
+            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--draw);">${draws} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctD}%</span></span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Horizontal bar chart: matches per brand ──
+  const brandChartEl = document.getElementById('chart-brand');
+  if (!brandChartEl) return;
+  const brandEntries = Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  if (brandEntries.length === 0) {
+    brandChartEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
+  } else {
+    const maxVal = brandEntries[0][1];
+    brandChartEl.innerHTML = brandEntries.map(([brand, count]) => {
+      const pct = Math.round(count / maxVal * 100);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="font-size:12px;color:var(--text-sec);width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(brand)}</span>
+        <div style="flex:1;background:var(--bg4);border-radius:99px;height:8px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:99px;transition:width .4s;"></div>
+        </div>
+        <span style="font-size:12px;font-weight:600;color:var(--text);min-width:20px;text-align:right;">${count}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Sparkline: rating over time ──
+  const sparkEl = document.getElementById('chart-rating');
+  if (!sparkEl) return;
+  const ratedMatches = real.filter(m => m.rating > 0).sort((a,b)=>(a.sortKey||'').localeCompare(b.sortKey||''));
+  if (ratedMatches.length < 2) {
+    sparkEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Se necesitan al menos 2 luchas calificadas</p>';
+  } else {
+    const W = 300, H = 80, pad = 8;
+    const ratings = ratedMatches.map(m => m.rating);
+    const minR = Math.min(...ratings), maxR = Math.max(...ratings);
+    const range = maxR - minR || 1;
+    const pts = ratings.map((r, i) => {
+      const x = pad + (i / (ratings.length - 1)) * (W - pad * 2);
+      const y = H - pad - ((r - minR) / range) * (H - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const avg = ratings.reduce((s,r)=>s+r,0)/ratings.length;
+    const avgY = H - pad - ((avg - minR) / range) * (H - pad * 2);
+    sparkEl.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;">
+        <line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${W-pad}" y2="${avgY.toFixed(1)}" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3 3"/>
+        <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        ${ratings.map((r,i)=>{
+          const x = pad + (i/(ratings.length-1))*(W-pad*2);
+          const y = H - pad - ((r-minR)/range)*(H-pad*2);
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
+        }).join('')}
+        <text x="${pad}" y="${H-1}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)">${minR.toFixed(1)}★</text>
+        <text x="${W-pad}" y="${H-1}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)" text-anchor="end">${maxR.toFixed(1)}★</text>
+        <text x="${(W/2).toFixed(0)}" y="12" font-size="9" fill="var(--text-sec)" font-family="var(--font-body)" text-anchor="middle">prom. ★${avg.toFixed(2)}</text>
+      </svg>`;
+  }
 }
 
 function calcTitleDays() {

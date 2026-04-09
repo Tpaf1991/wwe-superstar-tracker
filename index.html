@@ -118,8 +118,10 @@
       <div class="view-header"><h1>Estadísticas</h1></div>
       <div class="stats-layout">
         <div class="stat-block"><h3>Resumen general</h3><div class="stat-cards" id="stat-general"></div></div>
+        <div class="stat-block chart-block"><h3>Victoria / Derrota / Empate</h3><div id="chart-wld"></div></div>
         <div class="stat-block"><h3>% Victoria por tipo de lucha</h3><div id="stat-by-type" class="bar-list"></div></div>
-        <div class="stat-block"><h3>Luchas por marca / evento</h3><div id="stat-by-brand" class="bar-list"></div></div>
+        <div class="stat-block chart-block"><h3>Luchas por marca</h3><div id="chart-brand"></div></div>
+        <div class="stat-block stats-full"><h3>Evolución de calificación</h3><div id="chart-rating"></div></div>
         <div class="stat-block"><h3>Rivalidades</h3><div id="stat-rivalries" class="rivalry-list"></div></div>
         <div class="stat-block"><h3>Reinados — Días con el título</h3><div id="stat-titles" class="title-list"></div></div>
       </div>
@@ -155,13 +157,6 @@
       <button class="modal-close" id="modal-close">✕</button>
     </div>
     <div class="modal-body">
-      <div id="day-matches-section" class="day-matches-section hidden">
-        <h4>Luchas del día</h4>
-        <div id="day-matches-list"></div>
-        <button class="btn-add-another" id="btn-add-another">+ Agregar otra lucha</button>
-        <hr class="modal-divider">
-      </div>
-
       <div id="match-form">
         <div class="form-row">
           <div class="form-group">
@@ -251,6 +246,44 @@
     <div class="modal-body" id="day-detail-body"></div>
     <div class="modal-footer">
       <button class="btn-save" id="btn-day-add">+ Agregar lucha</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW MATCH (read-only) -->
+<div id="view-match-overlay" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div>
+        <h2 id="vm-title">Lucha</h2>
+        <span id="vm-date" class="modal-date"></span>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('view-match-overlay').classList.add('hidden')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <span id="vm-num" style="font-family:var(--font-head);font-size:28px;font-weight:700;color:var(--text-ter);"></span>
+        <span id="vm-result" class="match-result-badge"></span>
+      </div>
+      <div id="vm-image-wrap" style="margin-bottom:14px;display:none;"></div>
+      <div class="vm-grid">
+        <div class="vm-field"><div class="vm-label">Tipo</div><div class="vm-val" id="vm-type"></div></div>
+        <div class="vm-field"><div class="vm-label">Marca / Evento</div><div class="vm-val" id="vm-brand"></div></div>
+        <div class="vm-field"><div class="vm-label">División</div><div class="vm-val" id="vm-division"></div></div>
+        <div class="vm-field"><div class="vm-label">Título(s)</div><div class="vm-val" id="vm-titles"></div></div>
+        <div class="vm-field"><div class="vm-label">Ganador(es)</div><div class="vm-val" id="vm-winners"></div></div>
+        <div class="vm-field"><div class="vm-label">Rivalidad</div><div class="vm-val" id="vm-rivalry"></div></div>
+        <div class="vm-field"><div class="vm-label">Acción de rivalidad</div><div class="vm-val" id="vm-action"></div></div>
+        <div class="vm-field"><div class="vm-label">Calificación</div><div class="vm-val" id="vm-rating" style="color:var(--accent);"></div></div>
+      </div>
+      <div class="vm-field" style="margin-top:10px;">
+        <div class="vm-label">Comentario</div>
+        <div class="vm-val" id="vm-comment" style="white-space:pre-wrap;line-height:1.5;"></div>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn-cancel" onclick="document.getElementById('view-match-overlay').classList.add('hidden')">Cerrar</button>
+      <button class="btn-save" id="vm-edit-btn">Editar</button>
     </div>
   </div>
 </div>
