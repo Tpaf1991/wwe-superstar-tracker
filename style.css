@@ -251,25 +251,56 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .arrow-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-.calendar-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.calendar-wrap {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
 
+/* Day headers: empty corner + 7 day names */
 .cal-day-headers {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: 56px repeat(7, 1fr);
   background: var(--bg3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border2);
 }
+.cal-day-headers .cal-corner { border-right: 1px solid var(--border2); }
 .cal-day-headers span {
-  padding: 10px;
+  padding: 10px 4px;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-ter);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-right: 1px solid var(--border2);
+}
+.cal-day-headers span:last-child { border-right: none; }
+
+/* Grid: week label column + 7 day columns */
+.cal-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, 1fr);
 }
 
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-week-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-ter);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  background: var(--bg3);
+  border-right: 1px solid var(--border2);
+  border-bottom: 1px solid var(--border2);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  min-height: 80px;
+}
 
 .cal-cell {
   border-right: 1px solid var(--border2);
@@ -280,11 +311,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   transition: background 0.12s;
   position: relative;
 }
+/* Remove right border on the 7th day column (Sunday) — every 7th cell */
 .cal-cell:nth-child(7n) { border-right: none; }
 .cal-cell:hover { background: var(--bg3); }
-.calendar-wrap { border: 1px solid var(--border2) !important; }
-.cal-day-headers { border-bottom: 1px solid var(--border2) !important; }
-.cal-week-label { border-bottom: 1px solid var(--border2) !important; }
 
 .cal-cell-num {
   font-family: var(--font-head);
@@ -312,18 +341,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-
-.cal-week-label {
-  grid-column: span 7;
-  padding: 5px 10px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-ter);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  background: rgba(255,255,255,0.02);
-  border-bottom: 1px solid var(--border);
 }
 
 .cal-legend { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
@@ -1014,7 +1031,10 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .view { padding: 16px; }
   .stats-layout { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
-  .cal-cell { min-height: 54px; padding: 5px; }
-  .cal-cell-num { font-size: 14px; }
+  .cal-cell { min-height: 50px; padding: 4px; }
+  .cal-week-label { min-height: 50px; font-size: 8px; padding: 0 3px; }
+  .cal-cell-num { font-size: 13px; }
   .cal-match-preview { display: none; }
+  .cal-day-headers { grid-template-columns: 36px repeat(7, 1fr); }
+  .cal-grid { grid-template-columns: 36px repeat(7, 1fr); }
 }
