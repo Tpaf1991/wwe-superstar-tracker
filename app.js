@@ -1020,15 +1020,16 @@ function renderHistory() {
 //  STATS
 // ============================================================
 function renderStats() {
-  const real  = state.matches.filter(m => !isPromo(m));
-  const total = real.length;
-  const wins  = real.filter(m => getResultClass(m) === 'win').length;
-  const losses= real.filter(m => getResultClass(m) === 'loss').length;
-  const draws = real.filter(m => getResultClass(m) === 'draw').length;
-  const rated = real.filter(m => m.rating > 0);
-  const avg   = rated.length > 0 ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(2) : '—';
-  const winPct= total > 0 ? Math.round(wins/total*100) : 0;
+  const real   = state.matches.filter(m => !isPromo(m));
+  const total  = real.length;
+  const wins   = real.filter(m => getResultClass(m) === 'win').length;
+  const losses = real.filter(m => getResultClass(m) === 'loss').length;
+  const draws  = real.filter(m => getResultClass(m) === 'draw').length;
+  const rated  = real.filter(m => m.rating > 0);
+  const avg    = rated.length > 0 ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(2) : '—';
+  const winPct = total > 0 ? Math.round(wins/total*100) : 0;
 
+  // ── General summary ──
   document.getElementById('stat-general').innerHTML = `
     <div class="stat-card-item"><div class="sc-label">Luchas</div><div class="sc-val">${total}</div></div>
     <div class="stat-card-item"><div class="sc-label">Victorias</div><div class="sc-val win">${wins}</div></div>
@@ -1037,7 +1038,7 @@ function renderStats() {
     <div class="stat-card-item"><div class="sc-label">Derrotas</div><div class="sc-val loss">${losses}</div></div>
     <div class="stat-card-item"><div class="sc-label">Empates</div><div class="sc-val">${draws}</div></div>`;
 
-  // By type
+  // ── By type (bar list) ──
   const typeEl = document.getElementById('stat-by-type');
   typeEl.innerHTML = '';
   const byType = {};
@@ -1057,20 +1058,9 @@ function renderStats() {
   });
   if (!typeEl.innerHTML) typeEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
 
-  // By brand
-  const brandEl = document.getElementById('stat-by-brand');
-  brandEl.innerHTML = '';
+  // ── By brand (bar list in stat-by-brand + chart in chart-brand) ──
   const byBrand = {};
   state.matches.forEach(m => { if (m.brand) byBrand[m.brand] = (byBrand[m.brand]||0)+1; });
-  const totalAll = state.matches.length;
-  Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).forEach(([brand,count]) => {
-    const pct = Math.round(count/totalAll*100);
-    brandEl.innerHTML += `<div class="bar-item">
-      <div class="bar-header"><span class="bar-label">${escHtml(brand)}</span><span class="bar-pct">${count} luchas</span></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-    </div>`;
-  });
-  if (!brandEl.innerHTML) brandEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
 
   // Rivalries
   const rivEl = document.getElementById('stat-rivalries');
@@ -1113,109 +1103,112 @@ function renderStats() {
   if (!titlesEl.innerHTML) titlesEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin títulos aún</p>';
 
   // Charts
-  renderCharts(real, wins, losses, draws, byType, byBrand);
+  renderCharts(real, wins, losses, draws, byBrand);
 }
 
-function renderCharts(real, wins, losses, draws, byType, byBrand) {
-  // ── Donut: W/L/D ──
+function renderCharts(real, wins, losses, draws, byBrand) {
+  // ── Donut: V/D/E ──
   const donutEl = document.getElementById('chart-wld');
-  if (!donutEl) return;
-  const total = wins + losses + draws;
-  if (total === 0) {
-    donutEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;text-align:center;padding:20px 0;">Sin datos aún</p>';
-  } else {
-    const seg = (val, offset, color) => {
-      if (val === 0) return '';
-      const pct = val / total;
-      const dash = pct * 100;
-      const gap  = 100 - dash;
-      return `<circle cx="20" cy="20" r="15" fill="none" stroke="${color}" stroke-width="8"
-        stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}"
-        style="transform:rotate(-90deg);transform-origin:20px 20px"/>`;
-    };
-    const wOff = 0;
-    const lOff = -(wins/total*100);
-    const dOff = -((wins+losses)/total*100);
-    const pctW = Math.round(wins/total*100);
-    const pctL = Math.round(losses/total*100);
-    const pctD = Math.round(draws/total*100);
-    donutEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-        <svg viewBox="0 0 40 40" width="110" height="110" style="flex-shrink:0;">
-          ${seg(wins,   wOff, 'var(--win)')}
-          ${seg(losses, lOff, 'var(--loss)')}
-          ${seg(draws,  dOff, 'var(--draw)')}
-          <text x="20" y="18" text-anchor="middle" font-size="6" fill="var(--text)" font-family="var(--font-head)" font-weight="700">${total}</text>
-          <text x="20" y="25" text-anchor="middle" font-size="3.5" fill="var(--text-ter)" font-family="var(--font-body)">luchas</text>
-        </svg>
-        <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:100px;">
-          <div style="display:flex;justify-content:space-between;font-size:13px;">
-            <span style="display:flex;align-items:center;gap:6px;color:var(--win);"><span style="width:8px;height:8px;border-radius:50%;background:var(--win);display:inline-block;"></span>Victorias</span>
-            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--win);">${wins} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctW}%</span></span>
+  if (donutEl) {
+    const total = wins + losses + draws;
+    if (total === 0) {
+      donutEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;text-align:center;padding:20px 0;">Sin datos aún</p>';
+    } else {
+      const pctW = Math.round(wins/total*100);
+      const pctL = Math.round(losses/total*100);
+      const pctD = Math.round(draws/total*100);
+      const seg = (val, offset, color) => {
+        if (val === 0) return '';
+        const dash = val/total*100;
+        const gap  = 100 - dash;
+        return `<circle cx="20" cy="20" r="15" fill="none" stroke="${color}" stroke-width="8"
+          stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}"
+          style="transform:rotate(-90deg);transform-origin:20px 20px"/>`;
+      };
+      const wOff = 0;
+      const lOff = -(wins/total*100);
+      const dOff = -((wins+losses)/total*100);
+      donutEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+          <svg viewBox="0 0 40 40" width="100" height="100" style="flex-shrink:0;">
+            ${seg(wins,   wOff, 'var(--win)')}
+            ${seg(losses, lOff, 'var(--loss)')}
+            ${seg(draws,  dOff, 'var(--draw)')}
+            <text x="20" y="18" text-anchor="middle" font-size="6" fill="var(--text)" font-family="var(--font-head)" font-weight="700">${total}</text>
+            <text x="20" y="25" text-anchor="middle" font-size="3.5" fill="var(--text-ter)" font-family="var(--font-body)">luchas</text>
+          </svg>
+          <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:100px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span style="display:flex;align-items:center;gap:6px;color:var(--win);"><span style="width:8px;height:8px;border-radius:50%;background:var(--win);display:inline-block;"></span>Victorias</span>
+              <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--win);">${wins}<span style="font-size:11px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);margin-left:4px;">${pctW}%</span></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span style="display:flex;align-items:center;gap:6px;color:var(--loss);"><span style="width:8px;height:8px;border-radius:50%;background:var(--loss);display:inline-block;"></span>Derrotas</span>
+              <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--loss);">${losses}<span style="font-size:11px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);margin-left:4px;">${pctL}%</span></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span style="display:flex;align-items:center;gap:6px;color:var(--draw);"><span style="width:8px;height:8px;border-radius:50%;background:var(--draw);display:inline-block;"></span>Empates</span>
+              <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--draw);">${draws}<span style="font-size:11px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);margin-left:4px;">${pctD}%</span></span>
+            </div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;">
-            <span style="display:flex;align-items:center;gap:6px;color:var(--loss);"><span style="width:8px;height:8px;border-radius:50%;background:var(--loss);display:inline-block;"></span>Derrotas</span>
-            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--loss);">${losses} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctL}%</span></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;">
-            <span style="display:flex;align-items:center;gap:6px;color:var(--draw);"><span style="width:8px;height:8px;border-radius:50%;background:var(--draw);display:inline-block;"></span>Empates</span>
-            <span style="font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--draw);">${draws} <span style="font-size:12px;font-family:var(--font-body);font-weight:400;color:var(--text-ter);">${pctD}%</span></span>
-          </div>
-        </div>
-      </div>`;
+        </div>`;
+    }
   }
 
-  // ── Horizontal bar chart: matches per brand ──
+  // ── Horizontal bars: matches per brand (in chart-brand) ──
   const brandChartEl = document.getElementById('chart-brand');
-  if (!brandChartEl) return;
-  const brandEntries = Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  if (brandEntries.length === 0) {
-    brandChartEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
-  } else {
-    const maxVal = brandEntries[0][1];
-    brandChartEl.innerHTML = brandEntries.map(([brand, count]) => {
-      const pct = Math.round(count / maxVal * 100);
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <span style="font-size:12px;color:var(--text-sec);width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(brand)}</span>
-        <div style="flex:1;background:var(--bg4);border-radius:99px;height:8px;overflow:hidden;">
-          <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:99px;transition:width .4s;"></div>
-        </div>
-        <span style="font-size:12px;font-weight:600;color:var(--text);min-width:20px;text-align:right;">${count}</span>
-      </div>`;
-    }).join('');
+  if (brandChartEl) {
+    const brandEntries = Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    if (brandEntries.length === 0) {
+      brandChartEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin datos aún</p>';
+    } else {
+      const maxVal = brandEntries[0][1];
+      brandChartEl.innerHTML = brandEntries.map(([brand,count]) => {
+        const pct = Math.round(count/maxVal*100);
+        return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--text-sec);width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(brand)}">${escHtml(brand)}</span>
+          <div style="flex:1;background:var(--bg4);border-radius:99px;height:8px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:99px;transition:width .4s;"></div>
+          </div>
+          <span style="font-size:12px;font-weight:600;color:var(--text);min-width:20px;text-align:right;">${count}</span>
+        </div>`;
+      }).join('');
+    }
   }
 
-  // ── Sparkline: rating over time ──
+  // ── Sparkline: rating over time (in chart-rating) ──
   const sparkEl = document.getElementById('chart-rating');
-  if (!sparkEl) return;
-  const ratedMatches = real.filter(m => m.rating > 0).sort((a,b)=>(a.sortKey||'').localeCompare(b.sortKey||''));
-  if (ratedMatches.length < 2) {
-    sparkEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Se necesitan al menos 2 luchas calificadas</p>';
-  } else {
-    const W = 300, H = 80, pad = 8;
-    const ratings = ratedMatches.map(m => m.rating);
-    const minR = Math.min(...ratings), maxR = Math.max(...ratings);
-    const range = maxR - minR || 1;
-    const pts = ratings.map((r, i) => {
-      const x = pad + (i / (ratings.length - 1)) * (W - pad * 2);
-      const y = H - pad - ((r - minR) / range) * (H - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const avg = ratings.reduce((s,r)=>s+r,0)/ratings.length;
-    const avgY = H - pad - ((avg - minR) / range) * (H - pad * 2);
-    sparkEl.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;">
-        <line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${W-pad}" y2="${avgY.toFixed(1)}" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3 3"/>
-        <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        ${ratings.map((r,i)=>{
-          const x = pad + (i/(ratings.length-1))*(W-pad*2);
-          const y = H - pad - ((r-minR)/range)*(H-pad*2);
-          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
-        }).join('')}
-        <text x="${pad}" y="${H-1}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)">${minR.toFixed(1)}★</text>
-        <text x="${W-pad}" y="${H-1}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)" text-anchor="end">${maxR.toFixed(1)}★</text>
-        <text x="${(W/2).toFixed(0)}" y="12" font-size="9" fill="var(--text-sec)" font-family="var(--font-body)" text-anchor="middle">prom. ★${avg.toFixed(2)}</text>
-      </svg>`;
+  if (sparkEl) {
+    const ratedMatches = real.filter(m => m.rating > 0).sort((a,b)=>(a.sortKey||'').localeCompare(b.sortKey||''));
+    if (ratedMatches.length < 2) {
+      sparkEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Se necesitan al menos 2 luchas calificadas</p>';
+    } else {
+      const W = 300, H = 80, pad = 10;
+      const ratings = ratedMatches.map(m => m.rating);
+      const minR  = Math.min(...ratings);
+      const maxR  = Math.max(...ratings);
+      const range = maxR - minR || 1;
+      const pts   = ratings.map((r,i) => {
+        const x = pad + (i/(ratings.length-1))*(W-pad*2);
+        const y = H - pad - ((r-minR)/range)*(H-pad*2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      const avg  = ratings.reduce((s,r)=>s+r,0)/ratings.length;
+      const avgY = H - pad - ((avg-minR)/range)*(H-pad*2);
+      sparkEl.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible;">
+          <line x1="${pad}" y1="${avgY.toFixed(1)}" x2="${W-pad}" y2="${avgY.toFixed(1)}" stroke="var(--border2)" stroke-width="1" stroke-dasharray="3 3"/>
+          <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          ${ratings.map((r,i)=>{
+            const x = pad + (i/(ratings.length-1))*(W-pad*2);
+            const y = H - pad - ((r-minR)/range)*(H-pad*2);
+            return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
+          }).join('')}
+          <text x="${pad}" y="${H+2}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)">${minR.toFixed(1)}★</text>
+          <text x="${W-pad}" y="${H+2}" font-size="9" fill="var(--text-ter)" font-family="var(--font-body)" text-anchor="end">${maxR.toFixed(1)}★</text>
+          <text x="${W/2}" y="10" font-size="9" fill="var(--text-sec)" font-family="var(--font-body)" text-anchor="middle">prom. ★${avg.toFixed(2)}</text>
+        </svg>`;
+    }
   }
 }
 
