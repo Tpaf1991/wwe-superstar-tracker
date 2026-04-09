@@ -30,7 +30,6 @@ let state = {
 // ---- Firestore / Storage refs ----
 const matchesRef  = db.collection('matches');
 const catalogsRef = db.collection('catalogs');
-const storage     = firebase.storage();
 
 // ============================================================
 //  INIT
@@ -45,6 +44,7 @@ async function init() {
   updateSidebarMeta();
   setupNavigation();
   setupSidebarToggle();
+  setupThemeToggle();
   setupCalendarNav();
   setupModal();
   setupDayDetailModal();
@@ -94,6 +94,46 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-backdrop').classList.remove('visible');
   document.getElementById('menu-toggle').classList.remove('open');
+}
+
+// ============================================================
+//  THEME TOGGLE (dark / light)
+// ============================================================
+const MOON_SVG = `<path d="M17 12.5A7 7 0 0 1 9.5 3a7.002 7.002 0 0 0 0 14 7 7 0 0 0 7.5-4.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+const SUN_SVG  = `<path d="M10 3v1M10 16v1M3 10H2M18 10h-1M5.22 5.22l-.71-.71M15.49 15.49l-.71-.71M5.22 14.78l-.71.71M15.49 4.51l-.71.71M13 10a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`;
+
+function setupThemeToggle() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  applyTheme(saved);
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const next = document.body.classList.contains('light') ? 'dark' : 'light';
+    applyTheme(next);
+    localStorage.setItem('theme', next);
+  });
+
+  const mobileBtn = document.getElementById('theme-toggle-mobile');
+  if (mobileBtn) {
+    mobileBtn.addEventListener('click', () => {
+      const next = document.body.classList.contains('light') ? 'dark' : 'light';
+      applyTheme(next);
+      localStorage.setItem('theme', next);
+    });
+  }
+}
+
+function applyTheme(theme) {
+  const isLight = theme === 'light';
+  document.body.classList.toggle('light', isLight);
+
+  const label    = document.getElementById('theme-label');
+  const iconD    = document.getElementById('theme-icon');
+  const iconM    = document.getElementById('theme-icon-mobile');
+  const svgInner = isLight ? MOON_SVG : SUN_SVG;
+
+  if (label) label.textContent = isLight ? 'Modo oscuro' : 'Modo claro';
+  if (iconD) iconD.innerHTML = svgInner;
+  if (iconM) iconM.innerHTML = svgInner;
 }
 
 // ============================================================
@@ -155,13 +195,27 @@ async function ensureInCatalog(key, value) {
 }
 
 // ============================================================
-//  IMAGE UPLOAD
+//  IMAGE — Cloudinary unsigned upload
+//  Config is read from window.CLOUDINARY_CLOUD_NAME and
+//  window.CLOUDINARY_UPLOAD_PRESET (set in firebase-config.js)
 // ============================================================
-async function uploadImage(file, matchId) {
-  const ext  = file.name.split('.').pop();
-  const ref  = storage.ref(`matches/${matchId}.${ext}`);
-  await ref.put(file);
-  return await ref.getDownloadURL();
+async function uploadToCloudinary(file) {
+  const cloud  = window.CLOUDINARY_CLOUD_NAME;
+  const preset = window.CLOUDINARY_UPLOAD_PRESET;
+  if (!cloud || !preset) throw new Error('Cloudinary no configurado. Revisa firebase-config.js');
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', preset);
+  fd.append('folder', 'wwe-superstar');
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, {
+    method: 'POST',
+    body: fd
+  });
+  if (!res.ok) throw new Error('Error al subir imagen a Cloudinary');
+  const data = await res.json();
+  return data.secure_url;
 }
 
 function setupImageUpload() {
@@ -487,8 +541,7 @@ async function handleSave() {
     // Handle image
     let imageURL = state.pendingImageURL || null;
     if (state.pendingImageFile) {
-      const tempId = state.editingMatchId || ('new_' + Date.now());
-      imageURL = await uploadImage(state.pendingImageFile, tempId);
+      imageURL = await uploadToCloudinary(state.pendingImageFile);
     }
 
     const data = {

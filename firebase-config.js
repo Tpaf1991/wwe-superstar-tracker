@@ -13,4 +13,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-// firebase.storage() se inicializa en app.js
+
+// ============================================================
+//  CLOUDINARY CONFIG — reemplaza con tus datos reales
+//  Instrucciones en INSTRUCCIONES.md (sección Cloudinary)
+// ============================================================
+window.CLOUDINARY_CLOUD_NAME   = "ddzpwpjza";
+window.CLOUDINARY_UPLOAD_PRESET = "wwe-superstar-tracker";
