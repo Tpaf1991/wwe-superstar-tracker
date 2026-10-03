@@ -1349,15 +1349,15 @@ function updateSidebarMeta() {
 //  Draws calendar grid + stats panel directly onto a canvas.
 // ============================================================
 function setupExport() {
-  const btn = document.getElementById('btn-export');
+  // Export button lives in the topbar now (always visible)
+  const btn = document.getElementById('btn-export-topbar');
   if (!btn) return;
   btn.addEventListener('click', exportCalendarImage);
 }
 
 function exportCalendarImage() {
-  const btn = document.getElementById('btn-export');
-  btn.disabled = true;
-  btn.querySelector('span').textContent = 'Generando…';
+  const btn = document.getElementById('btn-export-topbar');
+  if (btn) btn.disabled = true;
 
   // Run async after a tick so the button state updates visually
   setTimeout(() => {
@@ -1367,8 +1367,7 @@ function exportCalendarImage() {
       console.error('Export error:', err);
       alert('Error al generar la imagen. Intenta de nuevo.');
     } finally {
-      btn.disabled = false;
-      btn.querySelector('span').textContent = 'Exportar imagen';
+      if (btn) btn.disabled = false;
     }
   }, 50);
 }

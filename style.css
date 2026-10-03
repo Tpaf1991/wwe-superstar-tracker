@@ -55,9 +55,9 @@ body.light {
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; transition: background 0.2s, color 0.2s; }
 
-/* ===== TOPBAR (mobile) ===== */
+/* ===== TOPBAR (always visible) ===== */
 #topbar {
-  display: none;
+  display: flex;
   position: fixed;
   top: 0; left: 0; right: 0;
   height: var(--topbar-h);
@@ -68,12 +68,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   padding: 0 16px;
   z-index: 200;
 }
-.topbar-brand { display: flex; flex-direction: column; line-height: 1; }
+.topbar-brand { display: flex; flex-direction: column; line-height: 1; flex: 1; }
 .topbar-brand .logo-wwe { font-family: var(--font-head); font-size: 22px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
 .topbar-brand .logo-sub { font-size: 10px; color: var(--text-ter); }
+.topbar-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.topbar-icon-btn {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
 
 #menu-toggle {
-  display: flex;
+  display: none;  /* hidden on desktop, shown on mobile */
   flex-direction: column;
   justify-content: center;
   gap: 5px;
@@ -119,7 +125,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   font-weight: 500;
 }
 .sidebar-theme {
-  padding: 0 8px 4px;
+  padding: 0 8px 8px;
+  flex-shrink: 0;  /* never compress */
+}
+.sidebar-meta {
+  flex-shrink: 0;  /* never compress */
 }
 
 /* ===== SIDEBAR BACKDROP ===== */
@@ -133,7 +143,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 #sidebar-backdrop.visible { display: block; }
 
 /* ===== LAYOUT ===== */
-#app { display: flex; height: 100vh; overflow: hidden; }
+#app { display: flex; height: 100vh; overflow: hidden; padding-top: var(--topbar-h); }
 
 /* ===== SIDEBAR ===== */
 #sidebar {
@@ -146,11 +156,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   padding: 20px 0 16px;
   transition: transform 0.25s ease;
   z-index: 160;
+  overflow: hidden;  /* contain children */
 }
 
 .sidebar-logo {
-  padding: 0 16px 20px;
-  border-bottom: 1px solid var(--border);
+  display: none;  /* title shown in topbar instead */
 }
 .logo-wwe {
   font-family: var(--font-head);
@@ -169,7 +179,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: block;
 }
 
-.sidebar-nav { padding: 12px 8px; flex: 1; }
+.sidebar-nav { padding: 12px 8px; flex: 1; overflow-y: auto; min-height: 0; }
 
 .nav-btn {
   display: flex;
@@ -1026,6 +1036,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .btn-export:hover { border-color: var(--accent); color: var(--accent); }
 .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1040,9 +1051,9 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
-  #topbar { display: flex; }
+  #menu-toggle { display: flex; }
 
-  #app { padding-top: var(--topbar-h); height: 100dvh; }
+  #app { height: 100dvh; }
 
   #sidebar {
     position: fixed;
