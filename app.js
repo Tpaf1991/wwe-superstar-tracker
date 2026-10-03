@@ -54,6 +54,7 @@ async function init() {
   setupNavigation();
   setupSidebarToggle();
   setupThemeToggle();
+  setupExport();
   setupCalendarNav();
   setupModal();
   setupDayDetailModal();
@@ -1307,6 +1308,131 @@ function updateSidebarMeta() {
   document.getElementById('meta-wins').textContent   = wins;
   document.getElementById('meta-losses').textContent = losses;
   document.getElementById('meta-rating').textContent = avg==='—' ? '—' : '★'+avg;
+}
+
+
+// ============================================================
+//  EXPORT CALENDAR AS IMAGE
+//  Builds an off-screen composite: calendar + stats panel,
+//  then uses html2canvas to render and download as PNG.
+// ============================================================
+function setupExport() {
+  const btn = document.getElementById('btn-export');
+  if (!btn) return;
+  btn.addEventListener('click', exportCalendarImage);
+}
+
+async function exportCalendarImage() {
+  const btn = document.getElementById('btn-export');
+  btn.disabled = true;
+  const originalText = btn.querySelector('span').textContent;
+  btn.querySelector('span').textContent = 'Generando…';
+
+  try {
+    // Gather current stats values
+    const total  = document.getElementById('meta-total').textContent;
+    const wins   = document.getElementById('meta-wins').textContent;
+    const losses = document.getElementById('meta-losses').textContent;
+    const rating = document.getElementById('meta-rating').textContent;
+
+    // Clone the calendar wrap so we don't disturb the live DOM
+    const calWrap   = document.querySelector('.calendar-wrap').cloneNode(true);
+    const calLegend = document.querySelector('.cal-legend').cloneNode(true);
+    const monthTitle = document.getElementById('cal-month-title').textContent;
+    const yearTitle  = document.getElementById('cal-year-title').textContent;
+
+    // Read current CSS variables (works for both dark and light mode)
+    const styles    = getComputedStyle(document.body);
+    const bg        = styles.getPropertyValue('--bg').trim()   || '#0d0d0f';
+    const bg2       = styles.getPropertyValue('--bg2').trim()  || '#141417';
+    const bg3       = styles.getPropertyValue('--bg3').trim()  || '#1a1a1f';
+    const border2   = styles.getPropertyValue('--border2').trim() || 'rgba(255,255,255,0.14)';
+    const textColor = styles.getPropertyValue('--text').trim() || '#f0ede8';
+    const textSec   = styles.getPropertyValue('--text-sec').trim() || '#8a8890';
+    const textTer   = styles.getPropertyValue('--text-ter').trim() || '#555360';
+    const accent    = styles.getPropertyValue('--accent').trim() || '#e8c44a';
+    const win       = styles.getPropertyValue('--win').trim()   || '#4caf73';
+    const loss      = styles.getPropertyValue('--loss').trim()  || '#e05252';
+
+    // Build composite element
+    const composite = document.createElement('div');
+    composite.id = 'export-composite';
+    composite.style.cssText = `
+      width: 900px;
+      background: ${bg};
+      padding: 24px;
+      font-family: 'Barlow', sans-serif;
+      color: ${textColor};
+      box-sizing: border-box;
+    `;
+
+    // ── Header ──
+    const header = document.createElement('div');
+    header.style.cssText = `display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;`;
+    header.innerHTML = `
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;color:${accent};letter-spacing:3px;text-transform:uppercase;margin-bottom:2px;">WWE 2K25 · Superstar Mode</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:800;text-transform:uppercase;letter-spacing:1px;line-height:1;">${monthTitle}</div>
+        <div style="font-size:13px;color:${textTer};margin-top:2px;">${yearTitle}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:220px;">
+        <div style="background:${bg2};border:1px solid ${border2};border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:${textTer};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Luchas</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;">${total}</div>
+        </div>
+        <div style="background:${bg2};border:1px solid ${border2};border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:${textTer};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Victorias</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;color:${win};">${wins}</div>
+        </div>
+        <div style="background:${bg2};border:1px solid ${border2};border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:${textTer};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Derrotas</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;color:${loss};">${losses}</div>
+        </div>
+        <div style="background:${bg2};border:1px solid ${border2};border-radius:8px;padding:10px 12px;">
+          <div style="font-size:10px;color:${textTer};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Rating</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;color:${accent};">${rating}</div>
+        </div>
+      </div>`;
+    composite.appendChild(header);
+
+    // ── Calendar (cloned) ──
+    const calContainer = document.createElement('div');
+    calContainer.style.cssText = `border-radius:10px;overflow:hidden;border:1px solid ${border2};`;
+    calContainer.appendChild(calWrap);
+    composite.appendChild(calContainer);
+
+    // ── Legend ──
+    calLegend.style.marginTop = '12px';
+    composite.appendChild(calLegend);
+
+    document.body.appendChild(composite);
+
+    // Wait a tick for layout
+    await new Promise(r => setTimeout(r, 80));
+
+    const canvas = await html2canvas(composite, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: bg,
+      logging: false
+    });
+
+    document.body.removeChild(composite);
+
+    // Download
+    const link = document.createElement('a');
+    const safeName = monthTitle.toLowerCase().replace(/\s+/g, '-');
+    link.download = `wwe-${safeName}-${yearTitle.replace(/\s+/g,'-').toLowerCase()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+  } catch (err) {
+    console.error('Export error:', err);
+    alert('Error al generar la imagen. Intenta de nuevo.');
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('span').textContent = originalText;
+  }
 }
 
 // ============================================================

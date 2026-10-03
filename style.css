@@ -1009,6 +1009,35 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .mini-match-title { font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-match-sub { color: var(--text-ter); margin-top: 1px; }
 
+
+/* ===== EXPORT BUTTON ===== */
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text-sec);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-export:hover { border-color: var(--accent); color: var(--accent); }
+.btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ===== EXPORT CANVAS (off-screen composite) ===== */
+#export-composite {
+  position: fixed;
+  top: 0; left: -9999px;
+  z-index: -1;
+  pointer-events: none;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
   #topbar { display: flex; }
