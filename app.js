@@ -115,6 +115,8 @@ async function loadCatalogs() {
 }
 
 async function saveCatalog(key) {
+  // Always keep catalog sorted A-Z before saving
+  state.catalogs[key].sort((a,b) => a.localeCompare(b,'es',{sensitivity:'base'}));
   await catalogsRef.doc(key).set({ items: state.catalogs[key] });
 }
 
@@ -181,12 +183,23 @@ function renderCalendar() {
         });
         cell.appendChild(dotsDiv);
 
-        if (dayMatches.length === 1) {
-          const preview = document.createElement('div');
-          preview.className = 'cal-match-preview';
-          preview.textContent = dayMatches[0].vs?.join(' vs ') || dayMatches[0].type?.join(', ') || '';
-          cell.appendChild(preview);
-        }
+        // Preview lines for each match
+        dayMatches.forEach(m => {
+          const lines = [];
+          if (isPromo(m)) {
+            lines.push('PROMO');
+          } else {
+            if (m.vs?.length)   lines.push('vs ' + m.vs.join(' & '));
+            if (m.type?.length) lines.push(m.type.join(', '));
+            if (m.brand)        lines.push(m.brand);
+          }
+          if (lines.length > 0) {
+            const preview = document.createElement('div');
+            preview.className = 'cal-match-preview';
+            preview.textContent = lines.join(' · ');
+            cell.appendChild(preview);
+          }
+        });
       }
 
       cell.addEventListener('click', () => openDayModal(day, state.currentMonth, state.currentYear));
@@ -426,13 +439,26 @@ function initMultiSelect(containerId, options, selected) {
   const wrap = document.getElementById(containerId);
   wrap.innerHTML = '';
   let selectedItems = [...selected];
+  // options reference is kept live so catalog updates are reflected
+  let liveOptions = options;
+
+  function addItem(val) {
+    val = val.trim();
+    if (!val || selectedItems.includes(val)) return;
+    selectedItems.push(val);
+    // Auto-add to the source array if not already there (inline add)
+    if (!liveOptions.includes(val)) liveOptions.push(val);
+    render();
+  }
 
   function render() {
     wrap.innerHTML = '';
     selectedItems.forEach(item => {
       const tag = document.createElement('span');
       tag.className = 'ms-tag';
-      tag.innerHTML = `${item} <button onclick="removeTag(this, '${containerId}', '${item}')">×</button>`;
+      // Escape for inline handler
+      const safe = item.replace(/\\/g,'\\\\').replace(/'/g,"\'");
+      tag.innerHTML = `${item} <button onclick="removeTag(this,'${containerId}','${safe}')">×</button>`;
       wrap.appendChild(tag);
     });
 
@@ -440,30 +466,56 @@ function initMultiSelect(containerId, options, selected) {
     inputWrap.className = 'ms-input-wrap';
     const input = document.createElement('input');
     input.className = 'ms-input';
-    input.placeholder = selectedItems.length === 0 ? 'Seleccionar…' : '';
+    input.placeholder = selectedItems.length === 0 ? 'Seleccionar o escribir…' : '';
     const dropdown = document.createElement('div');
     dropdown.className = 'ms-dropdown';
 
-    function showDropdown(filter = '') {
+    function showDropdown(filter) {
+      filter = filter || '';
       dropdown.innerHTML = '';
-      const filtered = options.filter(o => o.toLowerCase().includes(filter.toLowerCase()) && !selectedItems.includes(o));
-      filtered.forEach(opt => {
+      // Sort options A-Z, filter out already selected
+      const sorted = [...liveOptions]
+        .sort((a,b) => a.localeCompare(b,'es',{sensitivity:'base'}))
+        .filter(o => !selectedItems.includes(o) && o.toLowerCase().includes(filter.toLowerCase()));
+
+      sorted.forEach(opt => {
         const div = document.createElement('div');
         div.className = 'ms-option';
         div.textContent = opt;
         div.addEventListener('mousedown', e => {
           e.preventDefault();
-          selectedItems.push(opt);
-          render();
+          addItem(opt);
         });
         dropdown.appendChild(div);
       });
-      dropdown.classList.toggle('open', filtered.length > 0);
+
+      // "Agregar: X" option when typed text is not in list
+      const trimmed = filter.trim();
+      if (trimmed && !liveOptions.some(o => o.toLowerCase() === trimmed.toLowerCase())) {
+        const addDiv = document.createElement('div');
+        addDiv.className = 'ms-option ms-option-add';
+        addDiv.textContent = '+ Agregar: ' + trimmed;
+        addDiv.addEventListener('mousedown', e => {
+          e.preventDefault();
+          addItem(trimmed);
+          input.value = '';
+        });
+        dropdown.appendChild(addDiv);
+      }
+
+      dropdown.classList.toggle('open', dropdown.childElementCount > 0);
     }
 
-    input.addEventListener('input', e => showDropdown(e.target.value));
-    input.addEventListener('focus', () => showDropdown(input.value));
-    input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('open'), 150));
+    input.addEventListener('input',  e => showDropdown(e.target.value));
+    input.addEventListener('focus',  () => showDropdown(input.value));
+    input.addEventListener('blur',   () => setTimeout(() => dropdown.classList.remove('open'), 160));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = input.value.trim();
+        if (val) { addItem(val); input.value = ''; dropdown.classList.remove('open'); }
+      }
+    });
 
     inputWrap.appendChild(input);
     inputWrap.appendChild(dropdown);
@@ -720,12 +772,15 @@ function renderCatalogs() {
     const card = document.getElementById(id);
     const listEl = card.querySelector('.cat-list');
     listEl.innerHTML = '';
-    state.catalogs[key].forEach((item, idx) => {
-      const div = document.createElement('div');
-      div.className = 'cat-item';
-      div.innerHTML = `<span>${item}</span><button onclick="removeCatalogItem('${key}', ${idx})">×</button>`;
-      listEl.appendChild(div);
-    });
+    [...state.catalogs[key]]
+      .sort((a,b) => a.localeCompare(b,'es',{sensitivity:'base'}))
+      .forEach((item) => {
+        const realIdx = state.catalogs[key].indexOf(item);
+        const div = document.createElement('div');
+        div.className = 'cat-item';
+        div.innerHTML = `<span>${item}</span><button onclick="removeCatalogItem('${key}', ${realIdx})">×</button>`;
+        listEl.appendChild(div);
+      });
   });
 }
 
@@ -915,14 +970,28 @@ function drawExportCanvas() {
         const col = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
         ctx.beginPath(); ctx.arc(cx+8+di*11, rY+32, 4, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
       });
-      if (dm.length===1 && dm[0].vs?.length>0) {
-        let prev='vs '+dm[0].vs[0];
-        ctx.font=`400 9px "Barlow",sans-serif`;
-        while(ctx.measureText(prev).width > CELL_W-10 && prev.length>4) prev=prev.slice(0,-1);
-        if (prev.length<('vs '+dm[0].vs[0]).length) prev+='…';
-        ctx.fillStyle=C.textSec; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-        ctx.fillText(prev, cx+7, rY+47);
-      }
+      // Show preview lines for each match in the cell
+      let lineY = rY + 47;
+      const maxLineY = rY + CELL_H - 4;
+      ctx.font = `400 8.5px "Barlow",sans-serif`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      dm.forEach(m => {
+        if (lineY > maxLineY) return;
+        const parts = [];
+        if (isPromo(m)) {
+          parts.push('PROMO');
+        } else {
+          if (m.vs?.length)   parts.push('vs ' + m.vs.join(' & '));
+          if (m.type?.length) parts.push(m.type.join(', '));
+          if (m.brand)        parts.push(m.brand);
+        }
+        let line = parts.join(' · ');
+        while (ctx.measureText(line).width > CELL_W - 10 && line.length > 3) line = line.slice(0,-1);
+        if (line.length < parts.join(' · ').length) line += '…';
+        ctx.fillStyle = C.textSec;
+        ctx.fillText(line, cx+7, lineY);
+        lineY += 12;
+      });
     }
   }
 

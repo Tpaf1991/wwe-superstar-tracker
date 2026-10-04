@@ -174,7 +174,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .cal-cell {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  min-height: 80px;
+  min-height: 88px;
   padding: 8px;
   cursor: pointer;
   transition: background 0.12s;
@@ -644,6 +644,13 @@ textarea:focus { outline: none; border-color: var(--accent); }
   transition: background 0.1s;
 }
 .ms-option:hover, .ms-option.active { background: var(--accent-dim); color: var(--accent); }
+.ms-option-add {
+  color: var(--accent);
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.ms-option-add:hover { background: var(--accent-dim); }
 
 /* Star rating */
 .star-rating { display: flex; align-items: center; gap: 10px; }
