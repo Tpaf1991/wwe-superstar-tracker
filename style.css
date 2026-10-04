@@ -2,30 +2,31 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0d0d0f;
-  --bg2: #141417;
-  --bg3: #1a1a1f;
-  --bg4: #222228;
-  --border: rgba(255,255,255,0.08);
-  --border2: rgba(255,255,255,0.14);
-  --text: #f0ede8;
-  --text-sec: #8a8890;
-  --text-ter: #555360;
-  --accent: #e8c44a;
-  --accent-dim: rgba(232,196,74,0.12);
-  --win: #4caf73;
-  --win-bg: rgba(76,175,115,0.12);
-  --loss: #e05252;
-  --loss-bg: rgba(224,82,82,0.12);
-  --draw: #e8a030;
-  --draw-bg: rgba(232,160,48,0.12);
-  --promo: #7b6cf0;
-  --promo-bg: rgba(123,108,240,0.12);
-  --radius: 10px;
-  --radius-sm: 6px;
-  --sidebar: 220px;
-  --font-head: 'Barlow Condensed', sans-serif;
-  --font-body: 'Barlow', sans-serif;
+  /* Light mode — permanent */
+  --bg:       #f5f4f0;
+  --bg2:      #ffffff;
+  --bg3:      #eeede9;
+  --bg4:      #e2e1dc;
+  --border:   rgba(0,0,0,0.08);
+  --border2:  rgba(0,0,0,0.15);
+  --text:     #1a1a1e;
+  --text-sec: #5a5865;
+  --text-ter: #9a98a4;
+  --accent:   #b8941a;
+  --accent-dim: rgba(184,148,26,0.12);
+  --win:      #2d7a4f;
+  --win-bg:   rgba(45,122,79,0.10);
+  --loss:     #c03030;
+  --loss-bg:  rgba(192,48,48,0.10);
+  --draw:     #b06010;
+  --draw-bg:  rgba(176,96,16,0.10);
+  --promo:    #5548c8;
+  --promo-bg: rgba(85,72,200,0.10);
+  --radius:   10px;
+  --radius-sm:6px;
+  --sidebar:  220px;
+  --font-head:'Barlow Condensed', sans-serif;
+  --font-body:'Barlow', sans-serif;
 }
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; overflow: hidden; }
@@ -747,3 +748,25 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .stats-layout { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* ===== EXPORT BUTTON ===== */
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text-sec);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-export:hover { border-color: var(--accent); color: var(--accent); }
+.btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-export svg { flex-shrink: 0; }

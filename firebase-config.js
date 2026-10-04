@@ -15,8 +15,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 // ============================================================
-//  CLOUDINARY CONFIG — reemplaza con tus datos reales
-//  Instrucciones en INSTRUCCIONES.md (sección Cloudinary)
+//  CLOUDINARY CONFIG
 // ============================================================
-window.CLOUDINARY_CLOUD_NAME   = "ddzpwpjza";
+window.CLOUDINARY_CLOUD_NAME    = "ddzpwpjza";
 window.CLOUDINARY_UPLOAD_PRESET = "wwe-superstar";

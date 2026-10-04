@@ -32,19 +32,30 @@ const catalogsRef = db.collection('catalogs');
 
 // ---- Init ----
 async function init() {
-  await loadCatalogs();
-  await loadMatches();
-  renderCalendar();
-  renderHistory();
-  renderStats();
-  renderCatalogs();
-  updateSidebarMeta();
+  // 1. Setup all UI immediately — buttons and calendar work right away
   setupNavigation();
   setupCalendarNav();
   setupModal();
   setupDayDetailModal();
   setupCatalogEditors();
   setupConfirmModal();
+  setupExport();
+  renderCalendar(); // empty grid shown instantly
+
+  // 2. Load Firebase data in background
+  try {
+    await loadCatalogs();
+    await loadMatches();
+  } catch(err) {
+    console.error('Firebase load error:', err);
+  }
+
+  // 3. Re-render with real data
+  renderCalendar();
+  renderHistory();
+  renderStats();
+  renderCatalogs();
+  updateSidebarMeta();
 }
 
 // ---- Navigation ----
@@ -85,12 +96,10 @@ async function deleteMatch(id) {
   renumberMatches();
 }
 
-async function renumberMatches() {
+function renumberMatches() {
+  // In-memory only — no Firebase writes needed just for display numbering
   const sorted = [...state.matches].sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
-  for (let i = 0; i < sorted.length; i++) {
-    sorted[i].num = i + 1;
-    await matchesRef.doc(sorted[i].id).update({ num: i + 1 });
-  }
+  sorted.forEach((m, i) => { m.num = i + 1; });
   state.matches = sorted;
 }
 
@@ -323,6 +332,11 @@ function closeModal() {
 }
 
 async function handleSave() {
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
   const { day, month, year } = state.pendingDay || (() => {
     if (state.editingMatchId) {
       const m = state.matches.find(x => x.id === state.editingMatchId);
@@ -368,6 +382,13 @@ async function handleSave() {
   renderStats();
   renderCatalogs();
   updateSidebarMeta();
+  } catch(err) {
+    console.error('Save error:', err);
+    alert('Error al guardar: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar lucha';
+  }
 }
 
 // ---- Edit / Delete ----
@@ -753,6 +774,174 @@ function updateSidebarMeta() {
   document.getElementById('meta-losses').textContent = losses;
   document.getElementById('meta-rating').textContent = avg === '—' ? '—' : '★' + avg;
 }
+
+// ---- Start ----
+
+// ---- Image Upload (Cloudinary) ----
+async function uploadToCloudinary(file) {
+  const cloud  = window.CLOUDINARY_CLOUD_NAME;
+  const preset = window.CLOUDINARY_UPLOAD_PRESET;
+  if (!cloud || cloud === 'TU_CLOUD_NAME') throw new Error('Cloudinary no configurado en firebase-config.js');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', preset);
+  fd.append('folder', 'wwe-superstar');
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error('Error subiendo imagen a Cloudinary');
+  const data = await res.json();
+  return data.secure_url;
+}
+
+// ---- Export Calendar as Image (Native Canvas — no external libs) ----
+function setupExport() {
+  const btn = document.getElementById('btn-export');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Generando…';
+    setTimeout(() => {
+      try { drawExportCanvas(); }
+      catch(e) { console.error('Export error:', e); alert('Error al generar imagen: ' + e.message); }
+      finally { btn.disabled = false; btn.querySelector('span').textContent = 'Exportar imagen'; }
+    }, 50);
+  });
+}
+
+function drawExportCanvas() {
+  const isLight = true; // always light mode
+  const C = {
+    bg:      '#f5f4f0', bg2: '#ffffff', bg3: '#eeede9',
+    border:  'rgba(0,0,0,0.15)',
+    text:    '#1a1a1e', textSec: '#5a5865', textTer: '#9a98a4',
+    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', draw: '#b06010', promo: '#5548c8',
+  };
+
+  const SCALE = 2, W = 900, PAD = 24;
+  const WEEK_W = 58, CELL_W = Math.floor((W - PAD*2 - WEEK_W) / 7);
+  const CELL_H = 76, HEADER_ROW = 34;
+  const STAT_H = 108;
+  const CAL_H  = HEADER_ROW + 4 * CELL_H;
+  const LEG_H  = 34;
+  const H = PAD + STAT_H + 16 + CAL_H + LEG_H + PAD;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W * SCALE; canvas.height = H * SCALE;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(SCALE, SCALE);
+
+  // Background
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+
+  // Helper: rounded rect
+  function rr(x,y,w,h,r,fill,stroke) {
+    ctx.beginPath();
+    ctx.roundRect(x,y,w,h,r);
+    if (fill)  { ctx.fillStyle=fill;   ctx.fill();   }
+    if (stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=1; ctx.stroke(); }
+  }
+
+  // Helper: text
+  function txt(s,x,y,opts={}) {
+    ctx.font=`${opts.w||'normal'} ${opts.sz||13}px "${opts.f||'Barlow'}",sans-serif`;
+    ctx.fillStyle=opts.c||C.text; ctx.textAlign=opts.a||'left';
+    ctx.textBaseline=opts.b||'alphabetic'; ctx.fillText(String(s),x,y);
+  }
+
+  // ── Stats panel ──
+  const month  = document.getElementById('cal-month-title').textContent;
+  const year   = document.getElementById('cal-year-title').textContent;
+  const total  = document.getElementById('meta-total').textContent;
+  const wins   = document.getElementById('meta-wins').textContent;
+  const losses = document.getElementById('meta-losses').textContent;
+  const rating = document.getElementById('meta-rating').textContent;
+
+  txt('WWE 2K25 · SUPERSTAR MODE', PAD, PAD+14, {sz:11,w:'600',f:'Barlow Condensed',c:C.accent});
+  txt(month.toUpperCase(), PAD, PAD+54, {sz:42,w:'800',f:'Barlow Condensed'});
+  txt(year, PAD, PAD+72, {sz:13,c:C.textTer});
+
+  const sW=100, sH=46, sG=8;
+  const sX = W - PAD - sW*2 - sG, sY = PAD;
+  [['LUCHAS',total,C.text],['VICTORIAS',wins,C.win],['DERROTAS',losses,C.loss],['RATING',rating,C.accent]]
+    .forEach(([label,val,col],i) => {
+      const x = sX + (i%2)*(sW+sG), y = sY + Math.floor(i/2)*(sH+sG);
+      rr(x,y,sW,sH,6,C.bg2,C.border);
+      txt(label, x+9, y+14, {sz:9,w:'600',f:'Barlow Condensed',c:C.textTer});
+      txt(val,   x+9, y+38, {sz:22,w:'800',f:'Barlow Condensed',c:col});
+    });
+
+  // ── Calendar ──
+  const cX=PAD, cY=PAD+STAT_H+16, cW=W-PAD*2;
+  rr(cX, cY, cW, CAL_H, 8, C.bg2, C.border);
+
+  // Day header row
+  ctx.fillStyle=C.bg3; ctx.fillRect(cX,cY,cW,HEADER_ROW);
+  ctx.strokeStyle=C.border; ctx.lineWidth=1;
+  ctx.strokeRect(cX+0.5,cY+0.5,cW-1,HEADER_ROW-1);
+
+  // Week-label corner
+  ctx.fillStyle=C.bg3; ctx.fillRect(cX,cY,WEEK_W,HEADER_ROW);
+  ctx.beginPath(); ctx.moveTo(cX+WEEK_W+0.5,cY); ctx.lineTo(cX+WEEK_W+0.5,cY+HEADER_ROW); ctx.stroke();
+
+  ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach((d,i) => {
+    const x = cX+WEEK_W+i*CELL_W;
+    if (i>0){ ctx.beginPath(); ctx.moveTo(x+0.5,cY); ctx.lineTo(x+0.5,cY+HEADER_ROW); ctx.stroke(); }
+    txt(d, x+CELL_W/2, cY+HEADER_ROW/2+5, {sz:10,w:'600',f:'Barlow Condensed',c:C.textTer,a:'center'});
+  });
+
+  // Bottom of header
+  ctx.beginPath(); ctx.moveTo(cX,cY+HEADER_ROW+0.5); ctx.lineTo(cX+cW,cY+HEADER_ROW+0.5); ctx.stroke();
+
+  const monthMatches = state.matches.filter(m => m.month===state.currentMonth && m.year===state.currentYear);
+  const WEEKS_LABELS = ['Semana 1','Semana 2','Semana 3','Semana 4'];
+
+  for (let week=0; week<4; week++) {
+    const rY = cY + HEADER_ROW + week*CELL_H;
+    // Week label
+    ctx.fillStyle=C.bg3; ctx.fillRect(cX,rY,WEEK_W,CELL_H);
+    ctx.save(); ctx.translate(cX+WEEK_W/2, rY+CELL_H/2); ctx.rotate(-Math.PI/2);
+    txt(WEEKS_LABELS[week], 0, 0, {sz:8,w:'600',f:'Barlow Condensed',c:C.textTer,a:'center',b:'middle'});
+    ctx.restore();
+    ctx.beginPath(); ctx.moveTo(cX+WEEK_W+0.5,rY); ctx.lineTo(cX+WEEK_W+0.5,rY+CELL_H); ctx.stroke();
+    if (week<3){ ctx.beginPath(); ctx.moveTo(cX,rY+CELL_H+0.5); ctx.lineTo(cX+cW,rY+CELL_H+0.5); ctx.stroke(); }
+
+    for (let dow=0; dow<7; dow++) {
+      const day = week*7+dow+1;
+      const cx  = cX+WEEK_W+dow*CELL_W;
+      if (dow>0){ ctx.beginPath(); ctx.moveTo(cx+0.5,rY); ctx.lineTo(cx+0.5,rY+CELL_H); ctx.stroke(); }
+      const dm = monthMatches.filter(m=>m.day===day);
+      txt(String(day), cx+7, rY+18, {sz:14,w:'700',f:'Barlow Condensed',c:dm.length>0?C.text:C.textTer});
+      dm.forEach((m,di) => {
+        const rc = getResultClass(m);
+        const col = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
+        ctx.beginPath(); ctx.arc(cx+8+di*11, rY+32, 4, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
+      });
+      if (dm.length===1 && dm[0].vs?.length>0) {
+        let prev='vs '+dm[0].vs[0];
+        ctx.font=`400 9px "Barlow",sans-serif`;
+        while(ctx.measureText(prev).width > CELL_W-10 && prev.length>4) prev=prev.slice(0,-1);
+        if (prev.length<('vs '+dm[0].vs[0]).length) prev+='…';
+        ctx.fillStyle=C.textSec; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.fillText(prev, cx+7, rY+47);
+      }
+    }
+  }
+
+  // ── Legend ──
+  const lY = cY+CAL_H+10;
+  [['Victoria',C.win],['Derrota',C.loss],['Empate',C.draw],['Promo',C.promo]].forEach(([label,col],i) => {
+    const lX = PAD+i*90;
+    ctx.beginPath(); ctx.arc(lX+5,lY+7,4,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    txt(label, lX+14, lY+11, {sz:12,c:C.textSec});
+  });
+
+  // ── Download ──
+  const link = document.createElement('a');
+  const safe = month.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'-');
+  link.download = `wwe-${safe}-${year.replace(/\s+/g,'-').toLowerCase()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 
 // ---- Start ----
 init();
