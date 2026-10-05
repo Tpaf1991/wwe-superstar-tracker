@@ -777,3 +777,98 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .btn-export:hover { border-color: var(--accent); color: var(--accent); }
 .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-export svg { flex-shrink: 0; }
+
+/* ===== SINGLE-SELECT CUSTOM (ss-*) ===== */
+.single-select-wrap { position: relative; }
+
+.ss-btn {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 9px 28px 9px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ss-btn::after {
+  content: '▾';
+  position: absolute;
+  right: 9px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text-ter);
+  pointer-events: none;
+}
+.ss-btn.placeholder { color: var(--text-ter); }
+.ss-btn:focus { outline: none; border-color: var(--accent); }
+
+.ss-dropdown {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0; right: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  z-index: 600;
+  max-height: 200px;
+  overflow-y: auto;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.ss-dropdown.open { display: block; }
+
+.ss-search-wrap { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ss-search {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.ss-search:focus { outline: none; border-color: var(--accent); }
+
+.ms-option-selected { color: var(--accent); font-weight: 600; }
+
+/* ===== CALENDAR MULTI-LINE PREVIEW ===== */
+.cal-match-block {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.cal-match-block:first-of-type { border-top: none; margin-top: 2px; padding-top: 0; }
+
+.cal-preview-vs {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.cal-preview-type {
+  font-size: 9.5px;
+  color: var(--text-sec);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.cal-preview-brand {
+  font-size: 9px;
+  color: var(--text-ter);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}

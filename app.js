@@ -18,7 +18,6 @@ let state = {
     brands: ['Raw','SmackDown','NXT','WrestleMania','SummerSlam','Royal Rumble','Survivor Series','Money in the Bank','Elimination Chamber'],
     titles: ['WWE Championship','Universal Championship','Intercontinental Championship','United States Championship','Raw Tag Team Championship','SmackDown Tag Team Championship','Women\'s Championship','Women\'s Tag Team Championship'],
     divisions: ['WWE Championship','Universal Championship','Intercontinental','United States','Tag Team','Women\'s','Women\'s Tag Team'],
-    winners: [],
     rivalactions: ['Inicio de rivalidad','Ataque post-lucha','Interferencia','Traición','Confrontación verbal','Desafío al título','Fin de rivalidad','Alianza inesperada']
   },
   editingMatchId: null,
@@ -107,6 +106,7 @@ async function loadCatalogs() {
   const snap = await catalogsRef.get();
   if (!snap.empty) {
     snap.docs.forEach(d => {
+      if (d.id === 'winners') return; // removed — data goes into wrestlers now
       if (state.catalogs[d.id] !== undefined) {
         state.catalogs[d.id] = d.data().items || state.catalogs[d.id];
       }
@@ -183,22 +183,36 @@ function renderCalendar() {
         });
         cell.appendChild(dotsDiv);
 
-        // Preview lines for each match
+        // Multi-line preview per match
         dayMatches.forEach(m => {
-          const lines = [];
+          const block = document.createElement('div');
+          block.className = 'cal-match-block';
           if (isPromo(m)) {
-            lines.push('PROMO');
+            const l = document.createElement('div');
+            l.className = 'cal-preview-type';
+            l.textContent = 'PROMO';
+            block.appendChild(l);
           } else {
-            if (m.vs?.length)   lines.push('vs ' + m.vs.join(' & '));
-            if (m.type?.length) lines.push(m.type.join(', '));
-            if (m.brand)        lines.push(m.brand);
+            if (m.vs?.length) {
+              const l = document.createElement('div');
+              l.className = 'cal-preview-vs';
+              l.textContent = 'vs ' + m.vs.join(' & ');
+              block.appendChild(l);
+            }
+            if (m.type?.length) {
+              const l = document.createElement('div');
+              l.className = 'cal-preview-type';
+              l.textContent = m.type.join(', ');
+              block.appendChild(l);
+            }
+            if (m.brand) {
+              const l = document.createElement('div');
+              l.className = 'cal-preview-brand';
+              l.textContent = m.brand;
+              block.appendChild(l);
+            }
           }
-          if (lines.length > 0) {
-            const preview = document.createElement('div');
-            preview.className = 'cal-match-preview';
-            preview.textContent = lines.join(' · ');
-            cell.appendChild(preview);
-          }
+          cell.appendChild(block);
         });
       }
 
@@ -296,17 +310,18 @@ function openMatchForm(matchId, day, month, year) {
   document.getElementById('modal-title').textContent = match ? 'Editar lucha' : 'Agregar lucha';
   document.getElementById('modal-date-label').textContent = formatDateLabel(year, month, day);
 
-  // Populate selects
-  populateSelect('f-brand', state.catalogs.brands, match?.brand);
-  populateSelect('f-division', ['', ...state.catalogs.divisions], match?.division);
-  populateSelect('f-rivalry', ['', ...state.catalogs.wrestlers], match?.rivalry);
-  populateSelect('f-rivalry-action', ['', ...state.catalogs.rivalactions], match?.rivalryAction);
+  // Single-value custom selects (support inline add)
+  initSingleSelect('ss-brand',        state.catalogs.brands,      'brands',      match?.brand        || '');
+  initSingleSelect('ss-division',     state.catalogs.divisions,   'divisions',   match?.division     || '');
+  initSingleSelect('ss-rivalry-action', state.catalogs.rivalactions, 'rivalactions', match?.rivalryAction || '');
 
   // Multi-selects
-  initMultiSelect('ms-type', state.catalogs.types, match?.type || []);
-  initMultiSelect('ms-vs', state.catalogs.wrestlers, match?.vs || []);
-  initMultiSelect('ms-titles', state.catalogs.titles, match?.titles || []);
-  initMultiSelect('ms-winners', state.catalogs.winners.length > 0 ? state.catalogs.winners : state.catalogs.wrestlers, match?.winners || []);
+  initMultiSelect('ms-type',    state.catalogs.types,     match?.type    || [], 'types');
+  initMultiSelect('ms-vs',      state.catalogs.wrestlers, match?.vs      || [], 'wrestlers');
+  initMultiSelect('ms-titles',  state.catalogs.titles,    match?.titles  || [], 'titles');
+  // Ganadores & Rivalidad leen del catálogo de luchadores
+  initMultiSelect('ms-winners', state.catalogs.wrestlers, match?.winners || [], 'wrestlers');
+  initMultiSelect('ss-rivalry', state.catalogs.wrestlers, Array.isArray(match?.rivalry) ? match.rivalry : (match?.rivalry ? [match.rivalry] : []), 'wrestlers');
 
   // Rating
   const ratingVal = match ? Math.round(match.rating * 2) : 0;
@@ -358,18 +373,11 @@ async function handleSave() {
     return { day: 1, month: state.currentMonth, year: state.currentYear };
   })();
 
-  const types = getMultiSelected('ms-type');
-  const vs = getMultiSelected('ms-vs');
-  const titles = getMultiSelected('ms-titles');
+  const types   = getMultiSelected('ms-type');
+  const vs      = getMultiSelected('ms-vs');
+  const titles  = getMultiSelected('ms-titles');
   const winners = getMultiSelected('ms-winners');
-
-  // Auto-add winners to winners catalog
-  winners.forEach(w => {
-    if (!state.catalogs.winners.includes(w)) {
-      state.catalogs.winners.push(w);
-    }
-  });
-  await saveCatalog('winners');
+  const rivalry = getMultiSelected('ss-rivalry');
 
   const data = {
     day, month, year,
@@ -378,10 +386,10 @@ async function handleSave() {
     vs,
     titles,
     winners,
-    brand: document.getElementById('f-brand').value,
-    division: document.getElementById('f-division').value,
-    rivalry: document.getElementById('f-rivalry').value,
-    rivalryAction: document.getElementById('f-rivalry-action').value,
+    rivalry,
+    brand:        getSingleSelectValue('ss-brand'),
+    division:     getSingleSelectValue('ss-division'),
+    rivalryAction: getSingleSelectValue('ss-rivalry-action'),
     rating: parseFloat(document.getElementById('f-rating').value) / 2,
     comment: document.getElementById('f-comment').value.trim(),
     num: 0
@@ -435,7 +443,7 @@ function setupConfirmModal() {
 }
 
 // ---- Multi-select component ----
-function initMultiSelect(containerId, options, selected) {
+function initMultiSelect(containerId, options, selected, catalogKey) {
   const wrap = document.getElementById(containerId);
   wrap.innerHTML = '';
   let selectedItems = [...selected];
@@ -446,8 +454,11 @@ function initMultiSelect(containerId, options, selected) {
     val = val.trim();
     if (!val || selectedItems.includes(val)) return;
     selectedItems.push(val);
-    // Auto-add to the source array if not already there (inline add)
-    if (!liveOptions.includes(val)) liveOptions.push(val);
+    // Auto-add to the source catalog if not already there
+    if (!liveOptions.includes(val)) {
+      liveOptions.push(val);
+      if (catalogKey) saveCatalog(catalogKey); // async fire-and-forget
+    }
     render();
   }
 
@@ -542,17 +553,116 @@ function getMultiSelected(containerId) {
 }
 
 // ---- Selects ----
-function populateSelect(id, options, selected) {
-  const sel = document.getElementById(id);
-  sel.innerHTML = '';
-  const hasEmpty = options[0] === '';
-  (hasEmpty ? options : ['', ...options]).forEach(opt => {
-    const o = document.createElement('option');
-    o.value = opt;
-    o.textContent = opt || '— ninguna —';
-    if (opt === selected) o.selected = true;
-    sel.appendChild(o);
+// Single-value custom select with inline-add
+function initSingleSelect(containerId, options, catalogKey, selectedValue) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  let current = selectedValue || '';
+  let liveOptions = options; // stays in sync with catalog array
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ss-btn';
+  btn.textContent = current || '— ninguna —';
+  if (!current) btn.classList.add('placeholder');
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'ss-dropdown';
+
+  function buildDropdown(rawFilter) {
+    const filter = (rawFilter || '').toLowerCase(); // for matching only
+    const display = (rawFilter || '').trim();       // original case for display/save
+    dropdown.innerHTML = '';
+
+    // None option
+    const none = document.createElement('div');
+    none.className = 'ms-option' + (!current ? ' ms-option-selected' : '');
+    none.textContent = '— ninguna —';
+    none.addEventListener('mousedown', e => {
+      e.preventDefault();
+      current = '';
+      btn.textContent = '— ninguna —';
+      btn.classList.add('placeholder');
+      dropdown.classList.remove('open');
+    });
+    dropdown.appendChild(none);
+
+    // Sorted filtered options
+    [...liveOptions]
+      .sort((a,b) => a.localeCompare(b,'es',{sensitivity:'base'}))
+      .filter(o => o.toLowerCase().includes(filter))
+      .forEach(opt => {
+        const d = document.createElement('div');
+        d.className = 'ms-option' + (opt === current ? ' ms-option-selected' : '');
+        d.textContent = opt;
+        d.addEventListener('mousedown', e => {
+          e.preventDefault();
+          current = opt;
+          btn.textContent = opt;
+          btn.classList.remove('placeholder');
+          dropdown.classList.remove('open');
+        });
+        dropdown.appendChild(d);
+      });
+
+    // "Agregar: X" if typed text not in list
+    if (display && !liveOptions.some(o => o.toLowerCase() === display.toLowerCase())) {
+      const add = document.createElement('div');
+      add.className = 'ms-option ms-option-add';
+      add.textContent = '+ Agregar: ' + display;
+      add.addEventListener('mousedown', async e => {
+        e.preventDefault();
+        if (!liveOptions.includes(display)) {
+          liveOptions.push(display);
+          if (catalogKey) await saveCatalog(catalogKey);
+          renderCatalogs();
+        }
+        current = display;
+        btn.textContent = display;
+        btn.classList.remove('placeholder');
+        dropdown.classList.remove('open');
+        searchInput.value = '';
+      });
+      dropdown.appendChild(add);
+    }
+    dropdown.classList.toggle('open', dropdown.childElementCount > 0);
+  }
+
+  // Search input inside dropdown
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'ss-search-wrap';
+  const searchInput = document.createElement('input');
+  searchInput.className = 'ss-search';
+  searchInput.placeholder = 'Buscar o escribir…';
+  searchInput.addEventListener('input', e => buildDropdown(e.target.value));
+  searchWrap.appendChild(searchInput);
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.contains('open');
+    document.querySelectorAll('.ss-dropdown.open,.ms-dropdown.open').forEach(d => d.classList.remove('open'));
+    if (!isOpen) {
+      buildDropdown('');
+      dropdown.classList.add('open');
+      setTimeout(() => searchInput.focus(), 30);
+    }
   });
+
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dropdown.classList.remove('open');
+  }, { capture: true });
+
+  wrap._getValue = () => current;
+  wrap.appendChild(btn);
+  dropdown.insertBefore(searchWrap, dropdown.firstChild);
+  wrap.appendChild(dropdown);
+}
+
+function getSingleSelectValue(containerId) {
+  const wrap = document.getElementById(containerId);
+  return wrap?._getValue ? wrap._getValue() : '';
 }
 
 // ---- History ----
@@ -687,14 +797,16 @@ function renderStats() {
   rivEl.innerHTML = '';
   const rivals = {};
   realMatches.forEach(m => {
-    if (m.rivalry) {
-      if (!rivals[m.rivalry]) rivals[m.rivalry] = { total: 0, wins: 0, losses: 0, draws: 0 };
-      rivals[m.rivalry].total++;
+    const rivalList = Array.isArray(m.rivalry) ? m.rivalry : (m.rivalry ? [m.rivalry] : []);
+    rivalList.forEach(rival => {
+      if (!rival) return;
+      if (!rivals[rival]) rivals[rival] = { total: 0, wins: 0, losses: 0, draws: 0 };
+      rivals[rival].total++;
       const rc = getResultClass(m);
-      if (rc === 'win') rivals[m.rivalry].wins++;
-      else if (rc === 'loss') rivals[m.rivalry].losses++;
-      else rivals[m.rivalry].draws++;
-    }
+      if (rc === 'win') rivals[rival].wins++;
+      else if (rc === 'loss') rivals[rival].losses++;
+      else rivals[rival].draws++;
+    });
   });
   Object.entries(rivals).sort((a,b) => b[1].total - a[1].total).forEach(([rival, data]) => {
     rivEl.innerHTML += `<div class="rivalry-item">
@@ -760,16 +872,16 @@ function calcTitleDays() {
 // ---- Catalogs ----
 function renderCatalogs() {
   const cats = [
-    { id: 'cat-wrestlers', key: 'wrestlers' },
-    { id: 'cat-types', key: 'types' },
-    { id: 'cat-brands', key: 'brands' },
-    { id: 'cat-titles', key: 'titles' },
-    { id: 'cat-divisions', key: 'divisions' },
-    { id: 'cat-winners', key: 'winners' },
+    { id: 'cat-wrestlers',    key: 'wrestlers'    },
+    { id: 'cat-types',        key: 'types'        },
+    { id: 'cat-brands',       key: 'brands'       },
+    { id: 'cat-titles',       key: 'titles'       },
+    { id: 'cat-divisions',    key: 'divisions'    },
     { id: 'cat-rivalactions', key: 'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
     const card = document.getElementById(id);
+    if (!card) return;
     const listEl = card.querySelector('.cat-list');
     listEl.innerHTML = '';
     [...state.catalogs[key]]
@@ -786,16 +898,16 @@ function renderCatalogs() {
 
 function setupCatalogEditors() {
   const cats = [
-    { id: 'cat-wrestlers', key: 'wrestlers' },
-    { id: 'cat-types', key: 'types' },
-    { id: 'cat-brands', key: 'brands' },
-    { id: 'cat-titles', key: 'titles' },
-    { id: 'cat-divisions', key: 'divisions' },
-    { id: 'cat-winners', key: 'winners' },
+    { id: 'cat-wrestlers',    key: 'wrestlers'    },
+    { id: 'cat-types',        key: 'types'        },
+    { id: 'cat-brands',       key: 'brands'       },
+    { id: 'cat-titles',       key: 'titles'       },
+    { id: 'cat-divisions',    key: 'divisions'    },
     { id: 'cat-rivalactions', key: 'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
     const card = document.getElementById(id);
+    if (!card) return;
     const input = card.querySelector('input');
     const btn = card.querySelector('.cat-add button');
     const add = async () => {
@@ -970,27 +1082,42 @@ function drawExportCanvas() {
         const col = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
         ctx.beginPath(); ctx.arc(cx+8+di*11, rY+32, 4, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
       });
-      // Show preview lines for each match in the cell
-      let lineY = rY + 47;
-      const maxLineY = rY + CELL_H - 4;
-      ctx.font = `400 8.5px "Barlow",sans-serif`;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      // Multi-line preview per match in cell
+      let lineY = rY + 46;
+      const maxLineY = rY + CELL_H - 3;
       dm.forEach(m => {
         if (lineY > maxLineY) return;
-        const parts = [];
-        if (isPromo(m)) {
-          parts.push('PROMO');
-        } else {
-          if (m.vs?.length)   parts.push('vs ' + m.vs.join(' & '));
-          if (m.type?.length) parts.push(m.type.join(', '));
-          if (m.brand)        parts.push(m.brand);
+        function clipText(s, maxW) {
+          let t = s;
+          ctx.font = `400 8px "Barlow",sans-serif`;
+          while (ctx.measureText(t).width > maxW && t.length > 2) t = t.slice(0,-1);
+          return t.length < s.length ? t + '…' : t;
         }
-        let line = parts.join(' · ');
-        while (ctx.measureText(line).width > CELL_W - 10 && line.length > 3) line = line.slice(0,-1);
-        if (line.length < parts.join(' · ').length) line += '…';
-        ctx.fillStyle = C.textSec;
-        ctx.fillText(line, cx+7, lineY);
-        lineY += 12;
+        if (isPromo(m)) {
+          ctx.font = `600 8px "Barlow Condensed",sans-serif`;
+          ctx.fillStyle = C.promo; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+          ctx.fillText('PROMO', cx+7, lineY); lineY += 10;
+        } else {
+          if (m.vs?.length && lineY <= maxLineY) {
+            ctx.font = `600 8px "Barlow",sans-serif`;
+            ctx.fillStyle = C.text; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+            ctx.fillText(clipText('vs '+m.vs.join(' & '), CELL_W-10), cx+7, lineY);
+            lineY += 10;
+          }
+          if (m.type?.length && lineY <= maxLineY) {
+            ctx.font = `400 7.5px "Barlow",sans-serif`;
+            ctx.fillStyle = C.textSec;
+            ctx.fillText(clipText(m.type.join(', '), CELL_W-10), cx+7, lineY);
+            lineY += 9;
+          }
+          if (m.brand && lineY <= maxLineY) {
+            ctx.font = `400 7.5px "Barlow",sans-serif`;
+            ctx.fillStyle = C.textTer;
+            ctx.fillText(clipText(m.brand, CELL_W-10), cx+7, lineY);
+            lineY += 9;
+          }
+        }
+        lineY += 3; // gap between matches on same day
       });
     }
   }
