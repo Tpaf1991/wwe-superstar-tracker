@@ -17,7 +17,7 @@ let state = {
     types: ['Singles','Tag Team','Triple Threat','Fatal 4-Way','Battle Royal','Hell in a Cell','TLC','Ladder','Steel Cage','Last Man Standing','Extreme Rules','Promo'],
     brands: ['Raw','SmackDown','NXT','WrestleMania','SummerSlam','Royal Rumble','Survivor Series','Money in the Bank','Elimination Chamber'],
     titles: ['WWE Championship','Universal Championship','Intercontinental Championship','United States Championship','Raw Tag Team Championship','SmackDown Tag Team Championship','Women\'s Championship','Women\'s Tag Team Championship'],
-    divisions: ['WWE Championship','Universal Championship','Intercontinental','United States','Tag Team','Women\'s','Women\'s Tag Team'],
+    // divisions removed — 'División' now reads from titles catalog
     rivalactions: ['Inicio de rivalidad','Ataque post-lucha','Interferencia','Traición','Confrontación verbal','Desafío al título','Fin de rivalidad','Alianza inesperada']
   },
   editingMatchId: null,
@@ -264,7 +264,7 @@ function showDayDetailModal(matches, day, month, year) {
     div.innerHTML = `
       <div class="mini-match-info">
         <div class="mini-match-title">${isPromo(m) ? 'PROMO' : (m.vs?.join(' vs ') || 'Sin rival')}</div>
-        <div class="mini-match-sub">${m.type?.join(', ') || ''} ${m.brand ? '· ' + m.brand : ''}</div>
+        <div class="mini-match-sub">${m.type?.join(', ') || ''} ${(Array.isArray(m.brand) ? m.brand : (m.brand ? [m.brand] : [])).length > 0 ? '· ' + (Array.isArray(m.brand) ? m.brand : [m.brand]).join(' / ') : ''}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;">
         <span class="match-result-badge ${rc}">${rc === 'win' ? 'Vic' : rc === 'loss' ? 'Der' : rc === 'promo' ? 'Promo' : 'Emp'}</span>
@@ -311,9 +311,9 @@ function openMatchForm(matchId, day, month, year) {
   document.getElementById('modal-date-label').textContent = formatDateLabel(year, month, day);
 
   // Single-value custom selects (support inline add)
-  initSingleSelect('ss-brand',        state.catalogs.brands,      'brands',      match?.brand        || '');
-  initSingleSelect('ss-division',     state.catalogs.divisions,   'divisions',   match?.division     || '');
-  initSingleSelect('ss-rivalry-action', state.catalogs.rivalactions, 'rivalactions', match?.rivalryAction || '');
+  initMultiSelect('ss-brand',   state.catalogs.brands,      Array.isArray(match?.brand)         ? match.brand         : (match?.brand         ? [match.brand]         : []), 'brands');
+  initMultiSelect('ss-division', state.catalogs.titles,      Array.isArray(match?.division)      ? match.division      : (match?.division      ? [match.division]      : []), 'titles');
+  initMultiSelect('ss-rivalry-action', state.catalogs.rivalactions, Array.isArray(match?.rivalryAction) ? match.rivalryAction : (match?.rivalryAction ? [match.rivalryAction] : []), 'rivalactions');
 
   // Multi-selects
   initMultiSelect('ms-type',    state.catalogs.types,     match?.type    || [], 'types');
@@ -387,9 +387,9 @@ async function handleSave() {
     titles,
     winners,
     rivalry,
-    brand:        getSingleSelectValue('ss-brand'),
-    division:     getSingleSelectValue('ss-division'),
-    rivalryAction: getSingleSelectValue('ss-rivalry-action'),
+    brand:        getMultiSelected('ss-brand'),
+    division:     getMultiSelected('ss-division'),
+    rivalryAction: getMultiSelected('ss-rivalry-action'),
     rating: parseFloat(document.getElementById('f-rating').value) / 2,
     comment: document.getElementById('f-comment').value.trim(),
     num: 0
@@ -673,7 +673,7 @@ function renderHistory() {
   const resultFilter = document.getElementById('filter-result').value;
 
   // Populate filters
-  const brands = ['', ...new Set(state.matches.map(m => m.brand).filter(Boolean))];
+  const brands = ['', ...new Set(state.matches.flatMap(m => Array.isArray(m.brand) ? m.brand : (m.brand ? [m.brand] : [])).filter(Boolean))];
   const curBrand = document.getElementById('filter-brand').value;
   document.getElementById('filter-brand').innerHTML = brands.map(b => `<option value="${b}" ${b === curBrand ? 'selected':''}>` + (b || 'Todas las marcas') + '</option>').join('');
 
@@ -684,7 +684,7 @@ function renderHistory() {
   const realMatches = state.matches.filter(m => !isPromo(m));
   let filtered = [...state.matches].reverse();
 
-  if (brandFilter) filtered = filtered.filter(m => m.brand === brandFilter);
+  if (brandFilter) filtered = filtered.filter(m => (Array.isArray(m.brand) ? m.brand : [m.brand]).includes(brandFilter));
   if (typeFilter) filtered = filtered.filter(m => m.type?.includes(typeFilter));
   if (resultFilter) filtered = filtered.filter(m => getResultClass(m) === resultFilter);
 
@@ -778,9 +778,9 @@ function renderStats() {
   brandEl.innerHTML = '';
   const byBrand = {};
   state.matches.forEach(m => {
-    if (m.brand) {
-      byBrand[m.brand] = (byBrand[m.brand] || 0) + 1;
-    }
+    (Array.isArray(m.brand) ? m.brand : (m.brand ? [m.brand] : [])).forEach(b => {
+      byBrand[b] = (byBrand[b] || 0) + 1;
+    });
   });
   const totalAll = state.matches.length;
   Object.entries(byBrand).sort((a,b) => b[1] - a[1]).forEach(([brand, count]) => {
@@ -876,7 +876,6 @@ function renderCatalogs() {
     { id: 'cat-types',        key: 'types'        },
     { id: 'cat-brands',       key: 'brands'       },
     { id: 'cat-titles',       key: 'titles'       },
-    { id: 'cat-divisions',    key: 'divisions'    },
     { id: 'cat-rivalactions', key: 'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
@@ -902,7 +901,6 @@ function setupCatalogEditors() {
     { id: 'cat-types',        key: 'types'        },
     { id: 'cat-brands',       key: 'brands'       },
     { id: 'cat-titles',       key: 'titles'       },
-    { id: 'cat-divisions',    key: 'divisions'    },
     { id: 'cat-rivalactions', key: 'rivalactions' }
   ];
   cats.forEach(({ id, key }) => {
