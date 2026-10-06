@@ -135,8 +135,9 @@ function getDayOfWeek(day) { return (day - 1) % 7; }
 // ---- Calendar ----
 function setupCalendarNav() {
   document.getElementById('prev-month').addEventListener('click', () => {
+    if (state.currentMonth === 0 && state.currentYear === 1) return;
     state.currentMonth--;
-    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; if (state.currentYear < 1) state.currentYear = 1; }
+    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
     renderCalendar();
   });
   document.getElementById('next-month').addEventListener('click', () => {
@@ -144,6 +145,92 @@ function setupCalendarNav() {
     if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
     renderCalendar();
   });
+
+  // Click on year label → year picker grid
+  const yearEl = document.getElementById('cal-year-title');
+  yearEl.style.cursor = 'pointer';
+  yearEl.style.textDecoration = 'underline dotted';
+  yearEl.title = 'Clic para cambiar año · Scroll para avanzar';
+  yearEl.addEventListener('click', openYearPicker);
+  yearEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    state.currentYear += e.deltaY < 0 ? 1 : -1;
+    if (state.currentYear < 1) state.currentYear = 1;
+    renderCalendar();
+  }, { passive: false });
+}
+
+function openYearPicker() {
+  if (document.getElementById('year-picker-overlay')) {
+    document.getElementById('year-picker-overlay').remove();
+    return;
+  }
+
+  const maxYear = Math.max(state.currentYear, ...state.matches.map(m => m.year || 1), 1) + 3;
+  const years = Array.from({ length: maxYear }, (_, i) => i + 1);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'year-picker-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:900;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,0.45);`;
+
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background:var(--bg2);border:1px solid var(--border2);
+    border-radius:var(--radius);padding:20px;
+    width:280px;max-width:90vw;
+    box-shadow:0 8px 32px rgba(0,0,0,0.18);`;
+
+  const title = document.createElement('p');
+  title.textContent = 'Seleccionar año';
+  title.style.cssText = `font-family:var(--font-head);font-size:15px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.5px;color:var(--text);margin-bottom:12px;`;
+  box.appendChild(title);
+
+  const grid = document.createElement('div');
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:240px;overflow-y:auto;`;
+
+  years.forEach(y => {
+    const btn = document.createElement('button');
+    btn.textContent = `Año ${y}`;
+    const active = y === state.currentYear;
+    btn.style.cssText = `
+      background:${active ? 'var(--accent)' : 'var(--bg3)'};
+      color:${active ? 'var(--bg)' : 'var(--text-sec)'};
+      border:1px solid ${active ? 'var(--accent)' : 'var(--border2)'};
+      border-radius:var(--radius-sm);padding:7px 4px;
+      font-family:var(--font-body);font-size:12px;cursor:pointer;
+      transition:all .12s;`;
+    btn.addEventListener('mouseenter', () => { if (!active) btn.style.borderColor = 'var(--accent)'; });
+    btn.addEventListener('mouseleave', () => { if (!active) btn.style.borderColor = 'var(--border2)'; });
+    btn.addEventListener('click', () => {
+      state.currentYear = y;
+      renderCalendar();
+      overlay.remove();
+    });
+    grid.appendChild(btn);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.style.cssText = `
+    margin-top:12px;background:none;border:1px solid var(--border2);
+    color:var(--text-sec);padding:8px 16px;border-radius:var(--radius-sm);
+    font-family:var(--font-body);font-size:13px;cursor:pointer;width:100%;`;
+  cancelBtn.addEventListener('click', () => overlay.remove());
+
+  box.appendChild(grid);
+  box.appendChild(cancelBtn);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  setTimeout(() => {
+    const active = grid.querySelector(`button[style*="var(--accent)"]`);
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }, 30);
 }
 
 function renderCalendar() {
