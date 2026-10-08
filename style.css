@@ -889,3 +889,10 @@ textarea:focus { outline: none; border-color: var(--accent); }
   text-overflow: ellipsis;
   line-height: 1.3;
 }
+
+.cal-preview-rating {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
