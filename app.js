@@ -1121,7 +1121,7 @@ function drawExportCanvas() {
 
   const SCALE = 2, W = 900, PAD = 24;
   const WEEK_W = 58, CELL_W = Math.floor((W - PAD*2 - WEEK_W) / 7);
-  const CELL_H = 90, HEADER_ROW = 34;
+  const CELL_H = 100, HEADER_ROW = 34;
   const STAT_H = 108;
   const CAL_H  = HEADER_ROW + 4 * CELL_H;
   const LEG_H  = 34;
@@ -1212,65 +1212,86 @@ function drawExportCanvas() {
       const cx  = cX+WEEK_W+dow*CELL_W;
       if (dow>0){ ctx.beginPath(); ctx.moveTo(cx+0.5,rY); ctx.lineTo(cx+0.5,rY+CELL_H); ctx.stroke(); }
       const dm = monthMatches.filter(m=>m.day===day);
-      txt(String(day), cx+7, rY+18, {sz:14,w:'700',f:'Barlow Condensed',c:dm.length>0?C.text:C.textTer});
-      // Helper: clip text to max pixel width
-      function clipText(s, maxW) {
+      const PAD_L = cx + 6;    // left padding inside cell
+      const INNER_W = CELL_W - 10; // available text width
+
+      // ── Day number (top-left) ──
+      txt(String(day), PAD_L, rY+14, {sz:13,w:'700',f:'Barlow Condensed',c:dm.length>0?C.text:C.textTer});
+
+      if (dm.length === 0) continue;
+
+      // Thin separator under day number
+      ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(cx+1,rY+18); ctx.lineTo(cx+CELL_W-1,rY+18); ctx.stroke();
+
+      // ── Helper: clip text to fit pixel width with given font ──
+      function clip(s, maxW, font) {
+        ctx.font = font;
         let t = String(s);
-        ctx.font = `400 8px "Barlow",sans-serif`;
         while (ctx.measureText(t).width > maxW && t.length > 2) t = t.slice(0,-1);
-        return t.length < String(s).length ? t + '…' : t;
+        return t.length < String(s).length ? t+'…' : t;
       }
 
-      let lineY = rY + 20; // start right below the day number
+      // ── Render each match compactly ──
+      let y = rY + 28; // start below separator
+      const BOT = rY + CELL_H - 3;
+      const ROW1 = 11; // height of winner row
+      const ROW2 = 9;  // height of detail rows
+      const GAP  = 5;  // gap between matches
+
       dm.forEach(m => {
-        if (lineY > rY + CELL_H - 4) return;
+        if (y + ROW1 > BOT) return;
         const rc = getResultClass(m);
         const dotCol = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
 
-        // Dot
-        ctx.beginPath(); ctx.arc(cx+8, lineY-3, 4, 0, Math.PI*2);
+        // Row 1: ● winner(s)
+        ctx.beginPath(); ctx.arc(PAD_L+4, y-2, 3.5, 0, Math.PI*2);
         ctx.fillStyle = dotCol; ctx.fill();
 
-        // Winner label next to dot
-        if (m.winners?.length && lineY <= rY+CELL_H-4) {
-          ctx.font = `600 8px "Barlow",sans-serif`;
-          ctx.fillStyle = C.text; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-          ctx.fillText(clipText(m.winners.join(' & '), CELL_W-20), cx+16, lineY);
+        if (m.winners?.length) {
+          const wFont = `700 8.5px "Barlow",sans-serif`;
+          const wText = clip(m.winners.join(' & '), INNER_W-14, wFont);
+          ctx.font = wFont; ctx.fillStyle = C.text;
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillText(wText, PAD_L+12, y);
         }
-        lineY += 11;
+        y += ROW1;
 
         if (isPromo(m)) {
-          ctx.font = `600 8px "Barlow Condensed",sans-serif`;
-          ctx.fillStyle = C.promo; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-          if (lineY <= rY+CELL_H-4) { ctx.fillText('PROMO', cx+7, lineY); lineY += 10; }
+          if (y + ROW2 <= BOT) {
+            const f = `700 8px "Barlow Condensed",sans-serif`;
+            ctx.font = f; ctx.fillStyle = C.promo;
+            ctx.fillText('PROMO', PAD_L+2, y); y += ROW2;
+          }
         } else {
-          if (m.vs?.length && lineY <= rY+CELL_H-4) {
-            ctx.font = `400 8px "Barlow",sans-serif`;
-            ctx.fillStyle = C.textSec;
-            ctx.fillText(clipText('vs '+m.vs.join(' & '), CELL_W-10), cx+7, lineY);
-            lineY += 9;
+          // Row 2: vs rivals
+          if (m.vs?.length && y + ROW2 <= BOT) {
+            const f = `400 8px "Barlow",sans-serif`;
+            ctx.font = f; ctx.fillStyle = C.textSec;
+            ctx.fillText(clip('vs '+m.vs.join(' & '), INNER_W, f), PAD_L+2, y);
+            y += ROW2;
           }
-          if (m.type?.length && lineY <= rY+CELL_H-4) {
-            ctx.font = `400 7.5px "Barlow",sans-serif`;
-            ctx.fillStyle = C.textSec;
-            ctx.fillText(clipText(m.type.join(', '), CELL_W-10), cx+7, lineY);
-            lineY += 9;
-          }
+          // Row 3: type · brand on one line to save space
           const brandArr = Array.isArray(m.brand) ? m.brand : (m.brand ? [m.brand] : []);
-          if (brandArr.length && lineY <= rY+CELL_H-4) {
-            ctx.font = `400 7.5px "Barlow",sans-serif`;
-            ctx.fillStyle = C.textTer;
-            ctx.fillText(clipText(brandArr.join(' / '), CELL_W-10), cx+7, lineY);
-            lineY += 9;
+          const detailParts = [
+            ...(m.type?.length ? [m.type.join(', ')] : []),
+            ...(brandArr.length ? [brandArr.join('/')] : []),
+          ];
+          if (detailParts.length && y + ROW2 <= BOT) {
+            const f = `400 7.5px "Barlow",sans-serif`;
+            ctx.font = f; ctx.fillStyle = C.textTer;
+            ctx.fillText(clip(detailParts.join(' · '), INNER_W, f), PAD_L+2, y);
+            y += ROW2;
           }
-          if (m.rating > 0 && lineY <= rY+CELL_H-4) {
-            ctx.font = `600 7.5px "Barlow",sans-serif`;
-            ctx.fillStyle = C.accent;
-            ctx.fillText('★ '+m.rating.toFixed(1), cx+7, lineY);
-            lineY += 9;
+          // Row 4: rating
+          if (m.rating > 0 && y + ROW2 <= BOT) {
+            const f = `700 8px "Barlow",sans-serif`;
+            ctx.font = f; ctx.fillStyle = C.accent;
+            ctx.fillText('★ '+m.rating.toFixed(1), PAD_L+2, y);
+            y += ROW2;
           }
         }
-        lineY += 4; // gap between matches on same day
+        y += GAP; // gap between matches
       });
     }
   }
