@@ -926,32 +926,34 @@ function renderStats() {
   });
   if (rivEl.innerHTML === '') rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';
 
-  // Losses by rival (from vs field)
-  const lossByRivalEl = document.getElementById('stat-losses-by-rival');
-  if (lossByRivalEl) {
-    lossByRivalEl.innerHTML = '';
-    const lossByRival = {};
+  // Wins by wrestler — how many times each rival in VS was beaten
+  const winsByWrestlerEl = document.getElementById('stat-losses-by-rival');
+  if (winsByWrestlerEl) {
+    winsByWrestlerEl.innerHTML = '';
+    const winsByWrestler = {};
     realMatches.forEach(m => {
-      if (getResultClass(m) !== 'loss') return;
+      if (getResultClass(m) !== 'win') return;
       (m.vs || []).forEach(rival => {
         if (!rival) return;
-        lossByRival[rival] = (lossByRival[rival] || 0) + 1;
+        winsByWrestler[rival] = (winsByWrestler[rival] || 0) + 1;
       });
     });
-    const sorted = Object.entries(lossByRival).sort((a,b) => b[1] - a[1]);
+    // Sort: count descending, then alphabetically for ties
+    const sorted = Object.entries(winsByWrestler)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es', {sensitivity: 'base'}));
     if (sorted.length === 0) {
-      lossByRivalEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin derrotas registradas aún</p>';
+      winsByWrestlerEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin victorias registradas aún</p>';
     } else {
       const max = sorted[0][1];
-      sorted.forEach(([rival, count]) => {
+      sorted.forEach(([wrestler, count]) => {
         const pct = Math.round(count / max * 100);
-        lossByRivalEl.innerHTML += `<div class="bar-item">
+        winsByWrestlerEl.innerHTML += `<div class="bar-item">
           <div class="bar-header">
-            <span class="bar-label">${rival}</span>
-            <span class="bar-pct" style="color:var(--loss)">${count} derrota${count > 1 ? 's' : ''}</span>
+            <span class="bar-label">${wrestler}</span>
+            <span class="bar-pct" style="color:var(--win)">${count} victoria${count > 1 ? 's' : ''}</span>
           </div>
           <div class="bar-track">
-            <div class="bar-fill" style="width:${pct}%;background:var(--loss);"></div>
+            <div class="bar-fill" style="width:${pct}%;background:var(--win);"></div>
           </div>
         </div>`;
       });
