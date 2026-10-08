@@ -931,11 +931,11 @@ function renderStats() {
   if (winsByWrestlerEl) {
     winsByWrestlerEl.innerHTML = '';
     const winsByWrestler = {};
-    realMatches.forEach(m => {
-      if (getResultClass(m) !== 'win') return;
-      (m.vs || []).forEach(rival => {
-        if (!rival) return;
-        winsByWrestler[rival] = (winsByWrestler[rival] || 0) + 1;
+    // Count every wrestler listed in the winners field across all matches (including promos)
+    state.matches.forEach(m => {
+      (m.winners || []).forEach(winner => {
+        if (!winner) return;
+        winsByWrestler[winner] = (winsByWrestler[winner] || 0) + 1;
       });
     });
     // Sort: count descending, then alphabetically for ties
