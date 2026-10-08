@@ -204,6 +204,23 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .cal-dot.draw { background: var(--draw); }
 .cal-dot.promo { background: var(--promo); }
 
+.cal-dot-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.cal-winner-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 16px);
+  line-height: 1.2;
+}
+
 .cal-match-preview {
   font-size: 10px;
   color: var(--text-sec);

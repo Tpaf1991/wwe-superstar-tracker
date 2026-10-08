@@ -261,19 +261,27 @@ function renderCalendar() {
       const dayMatches = matchesThisMonth.filter(m => m.day === day);
       if (dayMatches.length > 0) {
         cell.classList.add('has-match');
-        const dotsDiv = document.createElement('div');
-        dotsDiv.className = 'cal-dots';
-        dayMatches.forEach(m => {
-          const dot = document.createElement('div');
-          dot.className = 'cal-dot ' + getResultClass(m);
-          dotsDiv.appendChild(dot);
-        });
-        cell.appendChild(dotsDiv);
 
-        // Multi-line preview per match
         dayMatches.forEach(m => {
+          const rc = getResultClass(m);
           const block = document.createElement('div');
           block.className = 'cal-match-block';
+
+          // Row 1: dot + winner name(s)
+          const dotRow = document.createElement('div');
+          dotRow.className = 'cal-dot-row';
+          const dot = document.createElement('span');
+          dot.className = 'cal-dot ' + rc;
+          dotRow.appendChild(dot);
+          if (m.winners?.length) {
+            const wLabel = document.createElement('span');
+            wLabel.className = 'cal-winner-label';
+            wLabel.textContent = m.winners.join(' & ');
+            dotRow.appendChild(wLabel);
+          }
+          block.appendChild(dotRow);
+
+          // Row 2+: match details
           if (isPromo(m)) {
             const l = document.createElement('div');
             l.className = 'cal-preview-type';
@@ -292,10 +300,11 @@ function renderCalendar() {
               l.textContent = m.type.join(', ');
               block.appendChild(l);
             }
-            if (m.brand) {
+            const brandArr = Array.isArray(m.brand) ? m.brand : (m.brand ? [m.brand] : []);
+            if (brandArr.length > 0) {
               const l = document.createElement('div');
               l.className = 'cal-preview-brand';
-              l.textContent = m.brand;
+              l.textContent = brandArr.join(' / ');
               block.appendChild(l);
             }
           }
@@ -405,6 +414,7 @@ function openMatchForm(matchId, day, month, year) {
   // Multi-selects
   initMultiSelect('ms-type',    state.catalogs.types,     match?.type    || [], 'types');
   initMultiSelect('ms-vs',      state.catalogs.wrestlers, match?.vs      || [], 'wrestlers');
+  initMultiSelect('ms-partners', state.catalogs.wrestlers, match?.partners || [], 'wrestlers');
   initMultiSelect('ms-titles',  state.catalogs.titles,    match?.titles  || [], 'titles');
   // Ganadores & Rivalidad leen del catálogo de luchadores
   initMultiSelect('ms-winners', state.catalogs.wrestlers, match?.winners || [], 'wrestlers');
@@ -460,17 +470,19 @@ async function handleSave() {
     return { day: 1, month: state.currentMonth, year: state.currentYear };
   })();
 
-  const types   = getMultiSelected('ms-type');
-  const vs      = getMultiSelected('ms-vs');
-  const titles  = getMultiSelected('ms-titles');
-  const winners = getMultiSelected('ms-winners');
-  const rivalry = getMultiSelected('ss-rivalry');
+  const types    = getMultiSelected('ms-type');
+  const vs       = getMultiSelected('ms-vs');
+  const partners = getMultiSelected('ms-partners');
+  const titles   = getMultiSelected('ms-titles');
+  const winners  = getMultiSelected('ms-winners');
+  const rivalry  = getMultiSelected('ss-rivalry');
 
   const data = {
     day, month, year,
     sortKey: makeSortKey(year, month, day),
     type: types,
     vs,
+    partners,
     titles,
     winners,
     rivalry,
@@ -799,7 +811,8 @@ function renderHistory() {
           ${m.type?.map(t => `<span class="match-tag">${t}</span>`).join('') || ''}
           ${m.brand ? `<span class="match-tag">${m.brand}</span>` : ''}
           ${m.titles?.length > 0 ? `<span class="match-tag" style="color:var(--accent);">🏆 ${m.titles.join(', ')}</span>` : ''}
-          ${m.rivalry ? `<span class="match-tag" style="color:var(--promo);">Rivalidad: ${m.rivalry}</span>` : ''}
+          ${m.partners?.length > 0 ? `<span class="match-tag" style="color:var(--text-sec);">🤝 ${m.partners.join(' & ')}</span>` : ''}
+          ${m.rivalry?.length > 0 ? `<span class="match-tag" style="color:var(--promo);">Rivalidad: ${(Array.isArray(m.rivalry) ? m.rivalry : [m.rivalry]).join(' & ')}</span>` : ''}
         </div>
         ${m.comment ? `<div class="match-comment">${m.comment}</div>` : ''}
       </div>
@@ -906,6 +919,38 @@ function renderStats() {
     </div>`;
   });
   if (rivEl.innerHTML === '') rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';
+
+  // Losses by rival (from vs field)
+  const lossByRivalEl = document.getElementById('stat-losses-by-rival');
+  if (lossByRivalEl) {
+    lossByRivalEl.innerHTML = '';
+    const lossByRival = {};
+    realMatches.forEach(m => {
+      if (getResultClass(m) !== 'loss') return;
+      (m.vs || []).forEach(rival => {
+        if (!rival) return;
+        lossByRival[rival] = (lossByRival[rival] || 0) + 1;
+      });
+    });
+    const sorted = Object.entries(lossByRival).sort((a,b) => b[1] - a[1]);
+    if (sorted.length === 0) {
+      lossByRivalEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin derrotas registradas aún</p>';
+    } else {
+      const max = sorted[0][1];
+      sorted.forEach(([rival, count]) => {
+        const pct = Math.round(count / max * 100);
+        lossByRivalEl.innerHTML += `<div class="bar-item">
+          <div class="bar-header">
+            <span class="bar-label">${rival}</span>
+            <span class="bar-pct" style="color:var(--loss)">${count} derrota${count > 1 ? 's' : ''}</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:var(--loss);"></div>
+          </div>
+        </div>`;
+      });
+    }
+  }
 
   // Titles (days)
   const titlesEl = document.getElementById('stat-titles');
