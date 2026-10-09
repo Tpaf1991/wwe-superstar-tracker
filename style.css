@@ -773,7 +773,12 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .form-row { grid-template-columns: 1fr; }
 }
 
-/* ===== EXPORT BUTTON ===== */
+/* ===== EXPORT BUTTONS ===== */
+.export-btn-group {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .btn-export {
   display: flex;
   align-items: center;

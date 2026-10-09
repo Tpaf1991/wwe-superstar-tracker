@@ -1099,17 +1099,21 @@ async function uploadToCloudinary(file) {
 
 // ---- Export Calendar as Image (Native Canvas — no external libs) ----
 function setupExport() {
-  const btn = document.getElementById('btn-export');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    btn.disabled = true;
-    btn.querySelector('span').textContent = 'Generando…';
-    setTimeout(() => {
-      try { drawExportCanvas(); }
-      catch(e) { console.error('Export error:', e); alert('Error al generar imagen: ' + e.message); }
-      finally { btn.disabled = false; btn.querySelector('span').textContent = 'Exportar imagen'; }
-    }, 50);
-  });
+  function wire(id, label, fn) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = 'Generando…';
+      setTimeout(() => {
+        try { fn(); }
+        catch(e) { console.error('Export error:', e); alert('Error al generar imagen: ' + e.message); }
+        finally { btn.disabled = false; btn.querySelector('span').textContent = label; }
+      }, 50);
+    });
+  }
+  wire('btn-export',         'Total',    drawExportCanvas);
+  wire('btn-export-monthly', 'Este mes', drawMonthlyExportCanvas);
 }
 
 function drawExportCanvas() {
@@ -1160,7 +1164,7 @@ function drawExportCanvas() {
   const losses = document.getElementById('meta-losses').textContent;
   const rating = document.getElementById('meta-rating').textContent;
 
-  txt('WWE 2K25 · SUPERSTAR MODE', PAD, PAD+14, {sz:11,w:'600',f:'Barlow Condensed',c:C.accent});
+  txt('WWE 2K25 · SUPERSTAR MODE  ·  ESTADÍSTICAS TOTALES', PAD, PAD+14, {sz:11,w:'600',f:'Barlow Condensed',c:C.accent});
   txt(month.toUpperCase(), PAD, PAD+54, {sz:42,w:'800',f:'Barlow Condensed'});
   txt(year, PAD, PAD+72, {sz:13,c:C.textTer});
 
@@ -1314,6 +1318,174 @@ function drawExportCanvas() {
   link.click();
 }
 
+
+
+// ---- Export: Monthly stats canvas ----
+function drawMonthlyExportCanvas() {
+  const C = {
+    bg:      '#f5f4f0', bg2: '#ffffff', bg3: '#eeede9',
+    border:  'rgba(0,0,0,0.15)',
+    text:    '#1a1a1e', textSec: '#5a5865', textTer: '#9a98a4',
+    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', draw: '#b06010', promo: '#5548c8',
+  };
+
+  const SCALE = 2, W = 900, PAD = 24;
+  const WEEK_W = 58, CELL_W = Math.floor((W - PAD*2 - WEEK_W) / 7);
+  const CELL_H = 100, HEADER_ROW = 34;
+  const STAT_H = 108;
+  const CAL_H  = HEADER_ROW + 4 * CELL_H;
+  const LEG_H  = 34;
+  const H = PAD + STAT_H + 16 + CAL_H + LEG_H + PAD;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W * SCALE; canvas.height = H * SCALE;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(SCALE, SCALE);
+
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+
+  function rr(x,y,w,h,r,fill,stroke) {
+    ctx.beginPath(); ctx.roundRect(x,y,w,h,r);
+    if (fill)  { ctx.fillStyle=fill;   ctx.fill();   }
+    if (stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=1; ctx.stroke(); }
+  }
+  function txt(s,x,y,opts={}) {
+    ctx.font=`${opts.w||'normal'} ${opts.sz||13}px "${opts.f||'Barlow'}",sans-serif`;
+    ctx.fillStyle=opts.c||C.text; ctx.textAlign=opts.a||'left';
+    ctx.textBaseline=opts.b||'alphabetic'; ctx.fillText(String(s),x,y);
+  }
+
+  // ── Monthly stats ──
+  const monthName = document.getElementById('cal-month-title').textContent;
+  const yearLabel = document.getElementById('cal-year-title').textContent;
+
+  const monthMatches = state.matches.filter(m =>
+    m.month === state.currentMonth && m.year === state.currentYear
+  );
+  const real = monthMatches.filter(m => !isPromo(m));
+  const mTotal  = real.length;
+  const mWins   = real.filter(m => getResultClass(m) === 'win').length;
+  const mLosses = real.filter(m => getResultClass(m) === 'loss').length;
+  const rated   = real.filter(m => m.rating > 0);
+  const mRating = rated.length > 0
+    ? '★' + (rated.reduce((s,m) => s + m.rating, 0) / rated.length).toFixed(1)
+    : '—';
+
+  txt('WWE 2K25 · SUPERSTAR MODE  ·  ' + monthName.toUpperCase() + ' ' + yearLabel.toUpperCase(), PAD, PAD+14, {sz:11,w:'600',f:'Barlow Condensed',c:C.accent});
+  txt(monthName.toUpperCase(), PAD, PAD+54, {sz:42,w:'800',f:'Barlow Condensed'});
+  txt(yearLabel, PAD, PAD+72, {sz:13,c:C.textTer});
+
+  const sW=100, sH=46, sG=8;
+  const sX = W - PAD - sW*2 - sG, sY = PAD;
+  [['LUCHAS',mTotal,C.text],['VICTORIAS',mWins,C.win],['DERROTAS',mLosses,C.loss],['RATING',mRating,C.accent]]
+    .forEach(([label,val,col],i) => {
+      const x = sX + (i%2)*(sW+sG), y = sY + Math.floor(i/2)*(sH+sG);
+      rr(x,y,sW,sH,6,C.bg2,C.border);
+      txt(label, x+9, y+14, {sz:9,w:'600',f:'Barlow Condensed',c:C.textTer});
+      txt(val,   x+9, y+38, {sz:22,w:'800',f:'Barlow Condensed',c:col});
+    });
+
+  // ── Calendar (same as full export) ──
+  const cX=PAD, cY=PAD+STAT_H+16, cW=W-PAD*2;
+  rr(cX, cY, cW, CAL_H, 8, C.bg2, C.border);
+
+  ctx.fillStyle=C.bg3; ctx.fillRect(cX,cY,cW,HEADER_ROW);
+  ctx.strokeStyle=C.border; ctx.lineWidth=1;
+  ctx.strokeRect(cX+0.5,cY+0.5,cW-1,HEADER_ROW-1);
+
+  // Week-label corner
+  ctx.fillStyle=C.bg3; ctx.fillRect(cX,cY,WEEK_W,HEADER_ROW);
+  ctx.beginPath(); ctx.moveTo(cX+WEEK_W+0.5,cY); ctx.lineTo(cX+WEEK_W+0.5,cY+HEADER_ROW); ctx.stroke();
+
+  ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach((d,i) => {
+    const x = cX+WEEK_W+i*CELL_W;
+    if (i>0){ ctx.beginPath(); ctx.moveTo(x+0.5,cY); ctx.lineTo(x+0.5,cY+HEADER_ROW); ctx.stroke(); }
+    txt(d, x+CELL_W/2, cY+HEADER_ROW/2+5, {sz:10,w:'600',f:'Barlow Condensed',c:C.textTer,a:'center'});
+  });
+
+  ctx.beginPath(); ctx.moveTo(cX,cY+HEADER_ROW+0.5); ctx.lineTo(cX+cW,cY+HEADER_ROW+0.5); ctx.stroke();
+
+  const WEEKS_LABELS = ['Semana 1','Semana 2','Semana 3','Semana 4'];
+
+  for (let week=0; week<4; week++) {
+    const rY = cY + HEADER_ROW + week*CELL_H;
+    ctx.fillStyle=C.bg3; ctx.fillRect(cX,rY,WEEK_W,CELL_H);
+    ctx.save(); ctx.translate(cX+WEEK_W/2, rY+CELL_H/2); ctx.rotate(-Math.PI/2);
+    txt(WEEKS_LABELS[week], 0, 0, {sz:8,w:'600',f:'Barlow Condensed',c:C.textTer,a:'center',b:'middle'});
+    ctx.restore();
+    ctx.strokeStyle=C.border; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cX+WEEK_W+0.5,rY); ctx.lineTo(cX+WEEK_W+0.5,rY+CELL_H); ctx.stroke();
+    if (week<3){ ctx.beginPath(); ctx.moveTo(cX,rY+CELL_H+0.5); ctx.lineTo(cX+cW,rY+CELL_H+0.5); ctx.stroke(); }
+
+    for (let dow=0; dow<7; dow++) {
+      const day = week*7+dow+1;
+      const cx  = cX+WEEK_W+dow*CELL_W;
+      if (dow>0){ ctx.beginPath(); ctx.moveTo(cx+0.5,rY); ctx.lineTo(cx+0.5,rY+CELL_H); ctx.stroke(); }
+      const dm = monthMatches.filter(m=>m.day===day);
+      const PAD_L = cx+6, INNER_W = CELL_W-10;
+
+      txt(String(day), PAD_L, rY+14, {sz:13,w:'700',f:'Barlow Condensed',c:dm.length>0?C.text:C.textTer});
+
+      if (dm.length === 0) continue;
+
+      ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(cx+1,rY+18); ctx.lineTo(cx+CELL_W-1,rY+18); ctx.stroke();
+
+      function clip(s, maxW, font) {
+        ctx.font = font;
+        let t = String(s);
+        while (ctx.measureText(t).width > maxW && t.length > 2) t = t.slice(0,-1);
+        return t.length < String(s).length ? t+'…' : t;
+      }
+
+      let y = rY + 28;
+      const BOT = rY + CELL_H - 3;
+      const ROW1=11, ROW2=9, GAP=5;
+
+      dm.forEach(m => {
+        if (y + ROW1 > BOT) return;
+        const rc = getResultClass(m);
+        const dotCol = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
+
+        ctx.beginPath(); ctx.arc(PAD_L+4, y-2, 3.5, 0, Math.PI*2);
+        ctx.fillStyle = dotCol; ctx.fill();
+
+        if (m.winners?.length) {
+          const wFont = `700 8.5px "Barlow",sans-serif`;
+          ctx.font=wFont; ctx.fillStyle=C.text; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+          ctx.fillText(clip(m.winners.join(' & '), INNER_W-14, wFont), PAD_L+12, y);
+        }
+        y += ROW1;
+
+        if (isPromo(m)) {
+          if (y+ROW2<=BOT){ const f=`700 8px "Barlow Condensed",sans-serif`; ctx.font=f; ctx.fillStyle=C.promo; ctx.fillText('PROMO',PAD_L+2,y); y+=ROW2; }
+        } else {
+          if (m.vs?.length && y+ROW2<=BOT){ const f=`400 8px "Barlow",sans-serif`; ctx.font=f; ctx.fillStyle=C.textSec; ctx.fillText(clip('vs '+m.vs.join(' & '),INNER_W,f),PAD_L+2,y); y+=ROW2; }
+          const bArr=Array.isArray(m.brand)?m.brand:(m.brand?[m.brand]:[]);
+          const det=[...(m.type?.length?[m.type.join(', ')]:[]),(bArr.length?[bArr.join('/')]:[])].flat();
+          if (det.length && y+ROW2<=BOT){ const f=`400 7.5px "Barlow",sans-serif`; ctx.font=f; ctx.fillStyle=C.textTer; ctx.fillText(clip(det.join(' · '),INNER_W,f),PAD_L+2,y); y+=ROW2; }
+          if (m.rating>0 && y+ROW2<=BOT){ const f=`700 8px "Barlow",sans-serif`; ctx.font=f; ctx.fillStyle=C.accent; ctx.fillText('★ '+m.rating.toFixed(1),PAD_L+2,y); y+=ROW2; }
+        }
+        y += GAP;
+      });
+    }
+  }
+
+  // ── Legend ──
+  const lY = cY+CAL_H+10;
+  [['Victoria',C.win],['Derrota',C.loss],['Empate',C.draw],['Promo',C.promo]].forEach(([label,col],i) => {
+    const lX = PAD+i*90;
+    ctx.beginPath(); ctx.arc(lX+5,lY+7,4,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    txt(label, lX+14, lY+11, {sz:12,c:C.textSec});
+  });
+
+  // ── Download ──
+  const link = document.createElement('a');
+  const safe = monthName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
+  link.download = `wwe-${safe}-${yearLabel.replace(/\s+/g,'-').toLowerCase()}-mes.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
 
 // ---- Start ----
 init();
