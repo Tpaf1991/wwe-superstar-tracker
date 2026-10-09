@@ -108,7 +108,25 @@
 
     <!-- STATS VIEW -->
     <section id="view-stats" class="view">
-      <div class="view-header"><h1>Estadísticas</h1></div>
+      <div class="view-header">
+        <h1>Estadísticas</h1>
+        <div class="export-btn-group">
+          <button class="btn-export" id="btn-stats-export" title="Exportar estadísticas totales">
+            <svg viewBox="0 0 20 20" width="15" height="15" fill="none">
+              <path d="M10 3v9M7 9l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 14v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span>Total</span>
+          </button>
+          <button class="btn-export" id="btn-stats-export-monthly" title="Exportar estadísticas del mes actual">
+            <svg viewBox="0 0 20 20" width="15" height="15" fill="none">
+              <path d="M10 3v9M7 9l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 14v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span>Este mes</span>
+          </button>
+        </div>
+      </div>
       <div class="stats-layout">
         <div class="stat-block">
           <h3>Resumen general</h3>

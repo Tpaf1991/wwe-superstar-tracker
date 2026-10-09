@@ -1114,6 +1114,19 @@ function setupExport() {
   }
   wire('btn-export',         'Total',    drawExportCanvas);
   wire('btn-export-monthly', 'Este mes', drawMonthlyExportCanvas);
+  wire('btn-stats-export', 'Total', () => {
+    drawStatsCanvas(state.matches, 'TOTAL', 'wwe-estadisticas-total.png');
+  });
+  wire('btn-stats-export-monthly', 'Este mes', () => {
+    const monthName = document.getElementById('cal-month-title').textContent;
+    const yearLabel = document.getElementById('cal-year-title').textContent;
+    const monthly = state.matches.filter(m =>
+      m.month === state.currentMonth && m.year === state.currentYear
+    );
+    const safe = monthName.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'-');
+    drawStatsCanvas(monthly, monthName.toUpperCase() + ' · ' + yearLabel.toUpperCase(),
+      `wwe-estadisticas-${safe}-${yearLabel.replace(/\s+/g,'-').toLowerCase()}.png`);
+  });
 }
 
 function drawExportCanvas() {
@@ -1484,6 +1497,203 @@ function drawMonthlyExportCanvas() {
   const safe = monthName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
   link.download = `wwe-${safe}-${yearLabel.replace(/\s+/g,'-').toLowerCase()}-mes.png`;
   link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+
+// ---- Export: Stats Canvas ----
+function drawStatsCanvas(matches, periodLabel, filename) {
+  const C = {
+    bg:'#f5f4f0', bg2:'#ffffff', bg3:'#eeede9', bg4:'#e2e1dc',
+    border:'rgba(0,0,0,0.12)', border2:'rgba(0,0,0,0.18)',
+    text:'#1a1a1e', textSec:'#5a5865', textTer:'#9a98a4',
+    accent:'#b8941a', win:'#2d7a4f', loss:'#c03030', draw:'#b06010', promo:'#5548c8',
+  };
+
+  // ── Compute all stats from provided matches ──
+  const real = matches.filter(m => !isPromo(m));
+  const total = real.length;
+  const wins   = real.filter(m => getResultClass(m) === 'win').length;
+  const losses = real.filter(m => getResultClass(m) === 'loss').length;
+  const draws  = real.filter(m => getResultClass(m) === 'draw').length;
+  const rated  = real.filter(m => m.rating > 0);
+  const avgRating = rated.length ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(2) : '—';
+  const winPct = total ? Math.round(wins/total*100) : 0;
+
+  const byType = {};
+  real.forEach(m => (m.type||[]).forEach(t => {
+    if (!byType[t]) byType[t]={total:0,wins:0};
+    byType[t].total++;
+    if (getResultClass(m)==='win') byType[t].wins++;
+  }));
+
+  const byBrand = {};
+  matches.forEach(m => {
+    (Array.isArray(m.brand)?m.brand:(m.brand?[m.brand]:[])).forEach(b => {
+      byBrand[b] = (byBrand[b]||0)+1;
+    });
+  });
+
+  const rivals = {};
+  real.forEach(m => {
+    const rivalList = Array.isArray(m.rivalry)?m.rivalry:(m.rivalry?[m.rivalry]:[]);
+    rivalList.forEach(rival => {
+      if (!rival) return;
+      if (!rivals[rival]) rivals[rival]={total:0,wins:0,losses:0,draws:0};
+      rivals[rival].total++;
+      const rc=getResultClass(m);
+      if (rc==='win') rivals[rival].wins++;
+      else if (rc==='loss') rivals[rival].losses++;
+      else rivals[rival].draws++;
+    });
+  });
+
+  const winsByWrestler = {};
+  matches.forEach(m => (m.winners||[]).forEach(w => {
+    if (w) winsByWrestler[w]=(winsByWrestler[w]||0)+1;
+  }));
+
+  // ── Canvas dimensions ──
+  const SCALE=2, W=900, PAD=24, COL_GAP=16;
+  const CW = Math.floor((W-PAD*2-COL_GAP)/2); // column width
+  const HEADER_H = 72;
+  const CARD_H = 120;  // summary cards row
+
+  // Measure section heights
+  const typesEntries  = Object.entries(byType).sort((a,b)=>b[1].total-a[1].total).slice(0,8);
+  const brandEntries  = Object.entries(byBrand).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const rivalEntries  = Object.entries(rivals).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+  const winEntries    = Object.entries(winsByWrestler).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'es',{sensitivity:'base'})).slice(0,10);
+
+  const BAR_ROW=26, LIST_ROW=30, BLOCK_PAD=14, BLOCK_TITLE=28;
+
+  function blockH(rows, extra=0) { return BLOCK_TITLE + BLOCK_PAD + rows*LIST_ROW + extra; }
+  function barBlockH(rows) { return BLOCK_TITLE + BLOCK_PAD + rows*BAR_ROW; }
+
+  const leftH  = barBlockH(Math.max(typesEntries.length,1)) + 12 + blockH(Math.max(rivalEntries.length,1));
+  const rightH = barBlockH(Math.max(brandEntries.length,1)) + 12 + blockH(Math.max(winEntries.length,1));
+  const colH   = Math.max(leftH, rightH);
+
+  const H = PAD + HEADER_H + 12 + CARD_H + 16 + colH + PAD;
+
+  const canvas = document.createElement('canvas');
+  canvas.width=W*SCALE; canvas.height=H*SCALE;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(SCALE,SCALE);
+
+  // Background
+  ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+
+  function rr(x,y,w,h,r,fill,stroke) {
+    ctx.beginPath(); ctx.roundRect(x,y,w,h,r);
+    if (fill)  { ctx.fillStyle=fill;   ctx.fill(); }
+    if (stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=1; ctx.stroke(); }
+  }
+  function txt(s,x,y,opts={}) {
+    ctx.font=`${opts.w||'normal'} ${opts.sz||13}px "${opts.f||'Barlow'}",sans-serif`;
+    ctx.fillStyle=opts.c||C.text; ctx.textAlign=opts.a||'left';
+    ctx.textBaseline=opts.b||'alphabetic'; ctx.fillText(String(s),x,y);
+  }
+  function clip(s,maxW,font) {
+    ctx.font=font; let t=String(s);
+    while(ctx.measureText(t).width>maxW&&t.length>2) t=t.slice(0,-1);
+    return t.length<String(s).length?t+'…':t;
+  }
+
+  // ── Header ──
+  txt('WWE 2K25 · SUPERSTAR MODE', PAD, PAD+14, {sz:11,w:'600',f:'Barlow Condensed',c:C.accent});
+  txt('ESTADÍSTICAS', PAD, PAD+50, {sz:36,w:'800',f:'Barlow Condensed'});
+  txt(periodLabel, PAD, PAD+66, {sz:12,c:C.textTer});
+
+  // ── Summary cards (6 cards in 2 rows of 3) ──
+  const sY=PAD+HEADER_H+12;
+  const sW=Math.floor((W-PAD*2-2*10)/3), sH=52, sG=10;
+  [
+    ['LUCHAS TOTALES', total, C.text],
+    ['VICTORIAS',      wins,  C.win],
+    ['DERROTAS',       losses,C.loss],
+    ['EMPATES',        draws, C.draw],
+    ['% VICTORIA',     winPct+'%', C.accent],
+    ['RATING PROM.',   avgRating==='—'?'—':'★'+avgRating, C.accent],
+  ].forEach(([label,val,col],i) => {
+    const x=PAD+i%3*(sW+sG), y=sY+Math.floor(i/3)*(sH+sG);
+    rr(x,y,sW,sH,6,C.bg2,C.border);
+    txt(label, x+10, y+15, {sz:9,w:'700',f:'Barlow Condensed',c:C.textTer});
+    txt(val,   x+10, y+40, {sz:22,w:'800',f:'Barlow Condensed',c:col});
+  });
+
+  // ── Two-column sections ──
+  const col1X=PAD, col2X=PAD+CW+COL_GAP;
+  let y1=sY+CARD_H+16, y2=y1;
+
+  function drawSection(title, x, y, w, contentFn) {
+    const startY=y;
+    txt(title, x, y+16, {sz:11,w:'700',f:'Barlow Condensed',c:C.textSec});
+    ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,y+20); ctx.lineTo(x+w,y+20); ctx.stroke();
+    const endY = contentFn(x, y+BLOCK_TITLE+BLOCK_PAD, w);
+    return endY + 12;
+  }
+
+  function drawBars(entries, x, y, w, barColor, labelRight) {
+    if (!entries.length) { txt('Sin datos aún', x, y+12, {sz:11,c:C.textTer}); return y+20; }
+    const maxVal = entries[0][1]?.total ?? entries[0][1];
+    entries.forEach(([label, data], i) => {
+      const count = typeof data==='object' ? data.total : data;
+      const pct   = typeof data==='object' ? Math.round(data.wins/data.total*100) : Math.round(count/maxVal*100);
+      const right = typeof data==='object' ? pct+'%' : count;
+      const row_y = y + i*BAR_ROW;
+      const labelFont=`400 10px "Barlow",sans-serif`;
+      txt(clip(label, w*0.55, labelFont), x, row_y+10, {sz:10,c:C.text});
+      txt(String(right), x+w, row_y+10, {sz:10,w:'700',c:barColor,a:'right'});
+      rr(x, row_y+14, w, 5, 2, C.bg4, null);
+      rr(x, row_y+14, Math.max(3,w*pct/100), 5, 2, barColor, null);
+    });
+    return y + entries.length*BAR_ROW;
+  }
+
+  function drawList(entries, x, y, w, rowFn) {
+    if (!entries.length) { txt('Sin datos aún', x, y+12, {sz:11,c:C.textTer}); return y+20; }
+    entries.forEach(([name, data], i) => {
+      const row_y = y + i*LIST_ROW;
+      rr(x, row_y, w, LIST_ROW-4, 4, C.bg2, C.border);
+      rowFn(name, data, x, row_y, w);
+    });
+    return y + entries.length*LIST_ROW;
+  }
+
+  // Left col: % by type
+  y1 = drawSection('% VICTORIA POR TIPO DE LUCHA', col1X, y1, CW, (x,y,w) =>
+    drawBars(typesEntries, x, y, w, C.win, true)
+  );
+  // Left col: Rivalidades
+  y1 = drawSection('RIVALIDADES', col1X, y1, CW, (x,y,w) =>
+    drawList(rivalEntries, x, y, w, (name, data, x, ry, w) => {
+      const nameFont=`500 10px "Barlow",sans-serif`;
+      txt(clip(name, w*0.55, nameFont), x+8, ry+LIST_ROW/2+4, {sz:10,w:'500'});
+      txt(`${data.wins}V`, x+w-70, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.win,a:'right'});
+      txt(`${data.losses}D`, x+w-40, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.loss,a:'right'});
+      txt(`${data.draws}E`, x+w-10, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.draw,a:'right'});
+    })
+  );
+
+  // Right col: by brand
+  y2 = drawSection('LUCHAS POR MARCA / EVENTO', col2X, y2, CW, (x,y,w) =>
+    drawBars(brandEntries, x, y, w, C.accent, false)
+  );
+  // Right col: Victorias por luchador
+  y2 = drawSection('VICTORIAS POR LUCHADOR', col2X, y2, CW, (x,y,w) =>
+    drawList(winEntries, x, y, w, (name, count, x, ry, w) => {
+      const nameFont=`500 10px "Barlow",sans-serif`;
+      txt(clip(name, w*0.7, nameFont), x+8, ry+LIST_ROW/2+4, {sz:10,w:'500'});
+      txt(`${count} victoria${count>1?'s':''}`, x+w-8, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.win,a:'right'});
+    })
+  );
+
+  // ── Download ──
+  const link=document.createElement('a');
+  link.download=filename;
+  link.href=canvas.toDataURL('image/png');
   link.click();
 }
 
