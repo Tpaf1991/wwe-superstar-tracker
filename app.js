@@ -9,7 +9,7 @@ const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
 // ---- State ----
 let state = {
-  currentMonth: 0,  // 0-11
+  currentMonth: 4,  // Season starts in May (4)
   currentYear: 1,   // WWE year
   matches: [],
   catalogs: {
@@ -135,14 +135,31 @@ function getDayOfWeek(day) { return (day - 1) % 7; }
 // ---- Calendar ----
 function setupCalendarNav() {
   document.getElementById('prev-month').addEventListener('click', () => {
-    if (state.currentMonth === 0 && state.currentYear === 1) return;
-    state.currentMonth--;
-    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
+    // Season starts in May (4): disabled at May Year 1
+    if (state.currentMonth === 4 && state.currentYear === 1) return;
+    if (state.currentMonth === 4) {
+      // May → April of previous year (season break)
+      state.currentMonth = 3;
+      state.currentYear--;
+    } else if (state.currentMonth === 0) {
+      // January → December (within same season year, no year change)
+      state.currentMonth = 11;
+    } else {
+      state.currentMonth--;
+    }
     renderCalendar();
   });
   document.getElementById('next-month').addEventListener('click', () => {
-    state.currentMonth++;
-    if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
+    if (state.currentMonth === 3) {
+      // April → May of next year (season break)
+      state.currentMonth = 4;
+      state.currentYear++;
+    } else if (state.currentMonth === 11) {
+      // December → January (within same season year, no year change)
+      state.currentMonth = 0;
+    } else {
+      state.currentMonth++;
+    }
     renderCalendar();
   });
 

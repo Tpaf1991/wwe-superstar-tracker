@@ -130,10 +130,16 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .nav-date {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
-.nav-date h1 { font-family: var(--font-head); font-size: 32px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-.year-label { font-size: 12px; color: var(--text-ter); display: block; margin-top: 2px; }
+/* Fixed width so arrows never move regardless of month name length */
+.nav-date-center {
+  width: 210px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.nav-date h1 { font-family: var(--font-head); font-size: 32px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1; }
+.year-label { font-size: 12px; color: var(--text-ter); display: block; margin-top: 2px; cursor: pointer; }
 
 .arrow-btn {
   background: var(--bg3);
