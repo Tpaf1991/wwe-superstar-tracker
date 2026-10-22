@@ -438,7 +438,8 @@ function openMatchForm(matchId, day, month, year) {
   initMultiSelect('ms-type',    state.catalogs.types,     match?.type    || [], 'types');
   initMultiSelect('ms-vs',      state.catalogs.wrestlers, match?.vs      || [], 'wrestlers');
   initMultiSelect('ms-partners', state.catalogs.wrestlers, match?.partners || [], 'wrestlers');
-  initMultiSelect('ms-titles',  state.catalogs.titles,    match?.titles  || [], 'titles');
+  initMultiSelect('ms-titles',      state.catalogs.titles, match?.titles      || [], 'titles');
+  initMultiSelect('ms-held-titles', state.catalogs.titles, match?.heldTitles  || [], 'titles');
   // Ganadores & Rivalidad leen del catálogo de luchadores
   initMultiSelect('ms-winners', state.catalogs.wrestlers, match?.winners || [], 'wrestlers');
   initMultiSelect('ss-rivalry', state.catalogs.wrestlers, Array.isArray(match?.rivalry) ? match.rivalry : (match?.rivalry ? [match.rivalry] : []), 'wrestlers');
@@ -496,7 +497,8 @@ async function handleSave() {
   const types    = getMultiSelected('ms-type');
   const vs       = getMultiSelected('ms-vs');
   const partners = getMultiSelected('ms-partners');
-  const titles   = getMultiSelected('ms-titles');
+  const titles      = getMultiSelected('ms-titles');
+  const heldTitles  = getMultiSelected('ms-held-titles');
   const winners  = getMultiSelected('ms-winners');
   const rivalry  = getMultiSelected('ss-rivalry');
 
@@ -507,6 +509,7 @@ async function handleSave() {
     vs,
     partners,
     titles,
+    heldTitles,
     winners,
     rivalry,
     brand:        getMultiSelected('ss-brand'),
@@ -991,36 +994,36 @@ function renderStats() {
 }
 
 function calcTitleDays() {
+  // Uses m.heldTitles: titles the user holds AFTER each match
+  // Days counted from the day AFTER winning (won Saturday → Sunday = day 1)
+  // Formula: days = current_dayNum - win_dayNum
   const sorted = [...state.matches].sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
-  const titleActive = {};
+  const titleWonOn = {};  // title → dayNum when first appeared in heldTitles
   const titleTotal = {};
 
-  sorted.forEach((m, idx) => {
-    const heldNow = m.titles || [];
-    const dayNum = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
+  sorted.forEach(m => {
+    const heldNow = m.heldTitles || [];
+    const dayNum  = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
 
-    // Check which titles were held before this match
-    Object.keys(titleActive).forEach(title => {
+    // Title lost: was tracked, no longer in heldNow
+    Object.keys(titleWonOn).forEach(title => {
       if (!heldNow.includes(title)) {
-        // Lost title
-        const prevDay = titleActive[title];
-        titleTotal[title] = (titleTotal[title] || 0) + (dayNum - prevDay);
-        delete titleActive[title];
+        const wonDay = titleWonOn[title];
+        titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - wonDay);
+        delete titleWonOn[title];
       }
     });
 
-    // New titles
+    // Title gained: appears in heldNow but not yet tracked
     heldNow.forEach(title => {
-      if (!titleActive[title]) {
-        titleActive[title] = dayNum;
-      }
+      if (!titleWonOn[title]) titleWonOn[title] = dayNum;
     });
   });
 
-  // Still active titles
+  // Still active titles — count to end of currently displayed month
   const today = (state.currentYear - 1) * 12 * 28 + state.currentMonth * 28 + 28;
-  Object.keys(titleActive).forEach(title => {
-    titleTotal[title] = (titleTotal[title] || 0) + (today - titleActive[title]);
+  Object.keys(titleWonOn).forEach(title => {
+    titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, today - titleWonOn[title]);
   });
 
   return titleTotal;
