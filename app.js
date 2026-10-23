@@ -440,6 +440,7 @@ function openMatchForm(matchId, day, month, year) {
   initMultiSelect('ms-partners', state.catalogs.wrestlers, match?.partners || [], 'wrestlers');
   initMultiSelect('ms-titles',      state.catalogs.titles, match?.titles      || [], 'titles');
   initMultiSelect('ms-held-titles', state.catalogs.titles, match?.heldTitles  || [], 'titles');
+  document.getElementById('f-title-change').checked = match?.titleChange || false;
   // Ganadores & Rivalidad leen del catálogo de luchadores
   initMultiSelect('ms-winners', state.catalogs.wrestlers, match?.winners || [], 'wrestlers');
   initMultiSelect('ss-rivalry', state.catalogs.wrestlers, Array.isArray(match?.rivalry) ? match.rivalry : (match?.rivalry ? [match.rivalry] : []), 'wrestlers');
@@ -510,6 +511,7 @@ async function handleSave() {
     partners,
     titles,
     heldTitles,
+    titleChange:  document.getElementById('f-title-change').checked,
     winners,
     rivalry,
     brand:        getMultiSelected('ss-brand'),
@@ -994,36 +996,61 @@ function renderStats() {
 }
 
 function calcTitleDays() {
-  // Uses m.heldTitles: titles the user holds AFTER each match
-  // Days counted from the day AFTER winning (won Saturday → Sunday = day 1)
-  // Formula: days = current_dayNum - win_dayNum
+  // Rules:
+  //  - titleChange=true + title in heldTitles  → user WON title this match
+  //  - titleChange=true + title NOT in heldTitles (but was before) → user LOST title this match
+  //  - titleChange=false → title appears/disappears naturally; count from first to last match holding it
+  // Days formula: dayNum_end - dayNum_start  (starts counting from day AFTER winning)
   const sorted = [...state.matches].sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
-  const titleWonOn = {};  // title → dayNum when first appeared in heldTitles
-  const titleTotal = {};
+  const titleTotal  = {};   // final tally per title
+  const winDay      = {};   // title → dayNum when reign started
+  const lastHeldDay = {};   // title → dayNum of most recent match where title was in heldTitles
+  const prevHeld    = {};   // title → bool (was held in previous match?)
 
   sorted.forEach(m => {
-    const heldNow = m.heldTitles || [];
-    const dayNum  = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
+    const heldNow   = new Set(m.heldTitles || []);
+    const dayNum    = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
+    const isChange  = m.titleChange || false;
 
-    // Title lost: was tracked, no longer in heldNow
-    Object.keys(titleWonOn).forEach(title => {
-      if (!heldNow.includes(title)) {
-        const wonDay = titleWonOn[title];
-        titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - wonDay);
-        delete titleWonOn[title];
+    // --- Titles that WERE held but are NOT held now ---
+    Object.keys(prevHeld).forEach(title => {
+      if (prevHeld[title] && !heldNow.has(title)) {
+        // Title disappeared
+        if (isChange) {
+          // Explicit: lost it on this match day
+          titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - (winDay[title] || dayNum));
+        } else {
+          // Implicit: count to LAST match that had it (which is lastHeldDay[title])
+          titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, (lastHeldDay[title] || dayNum) - (winDay[title] || dayNum));
+        }
+        delete winDay[title];
       }
     });
 
-    // Title gained: appears in heldNow but not yet tracked
+    // --- Titles that ARE held now ---
     heldNow.forEach(title => {
-      if (!titleWonOn[title]) titleWonOn[title] = dayNum;
+      lastHeldDay[title] = dayNum;
+
+      if (!prevHeld[title]) {
+        // Title gained (wasn't held last match)
+        winDay[title] = dayNum;
+      } else if (isChange && prevHeld[title]) {
+        // Title was held AND titleChange=true → they lost and won it back (rare edge case)
+        // Close previous reign, start new one
+        titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - (winDay[title] || dayNum));
+        winDay[title] = dayNum;
+      }
     });
+
+    // Update prevHeld for next iteration
+    Object.keys(prevHeld).forEach(t => { prevHeld[t] = false; });
+    heldNow.forEach(t => { prevHeld[t] = true; });
   });
 
-  // Still active titles — count to end of currently displayed month
+  // Still active reigns — count to end of currently displayed month
   const today = (state.currentYear - 1) * 12 * 28 + state.currentMonth * 28 + 28;
-  Object.keys(titleWonOn).forEach(title => {
-    titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, today - titleWonOn[title]);
+  Object.keys(winDay).forEach(title => {
+    titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, today - winDay[title]);
   });
 
   return titleTotal;
