@@ -936,11 +936,12 @@ function renderStats() {
   });
   Object.entries(rivals).sort((a,b) => b[1].total - a[1].total).forEach(([rival, data]) => {
     rivEl.innerHTML += `<div class="rivalry-item">
-      <span class="rivalry-name">${rival}</span>
-      <span class="rivalry-record" style="color:var(--win)">${data.wins}V</span>
-      <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
-      <span class="rivalry-record" style="color:var(--loss)">${data.losses}D</span>
-      <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
+      <span class="rivalry-name">${escHtml(rival)}</span>
+      <span class="rivalry-stats">
+        <span class="rivalry-total">${data.total} enc.</span>
+        <span class="rivalry-col win">${data.wins}V</span>
+        <span class="rivalry-col loss">${data.losses}D</span>
+      </span>
     </div>`;
   });
   if (rivEl.innerHTML === '') rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';

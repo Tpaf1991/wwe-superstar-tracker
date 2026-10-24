@@ -419,8 +419,37 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   padding: 10px 12px;
   background: var(--bg3);
   border-radius: var(--radius-sm);
+  gap: 8px;
 }
-.rivalry-name { font-size: 13px; font-weight: 500; }
+.rivalry-name {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rivalry-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.rivalry-total {
+  font-size: 11px;
+  color: var(--text-ter);
+  min-width: 44px;
+  text-align: right;
+}
+.rivalry-col {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 28px;
+  text-align: center;
+}
+.rivalry-col.win  { color: var(--win); }
+.rivalry-col.loss { color: var(--loss); }
 .rivalry-record { font-size: 12px; color: var(--text-sec); }
 
 .title-list { display: flex; flex-direction: column; gap: 8px; }
