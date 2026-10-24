@@ -83,7 +83,6 @@
       <div class="cal-legend">
         <span class="leg win">Victoria</span>
         <span class="leg loss">Derrota</span>
-        <span class="leg draw">Empate</span>
         <span class="leg promo">Promo</span>
       </div>
     </section>
@@ -99,7 +98,6 @@
             <option value="">Todos los resultados</option>
             <option value="win">Victoria</option>
             <option value="loss">Derrota</option>
-            <option value="draw">Empate</option>
           </select>
         </div>
       </div>
@@ -231,13 +229,17 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label>Título</label>
-            <div class="multi-select-wrap" id="ms-held-titles"></div>
-            <label class="title-change-toggle" id="title-change-label">
-              <input type="checkbox" id="f-title-change">
-              <span class="tc-thumb"></span>
-              <span class="tc-text">Cambio de manos</span>
-            </label>
+            <label>Gané el título</label>
+            <div class="multi-select-wrap" id="ms-titles-won"></div>
+          </div>
+          <div class="form-group">
+            <label>Perdí el título</label>
+            <div class="multi-select-wrap" id="ms-titles-lost"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label style="visibility:hidden">_</label>
           </div>
           <div class="form-group">
             <label>Rivalidad con</label>

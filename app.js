@@ -345,7 +345,7 @@ function getResultClass(match) {
   if (isPromo(match)) return 'promo';
   const myName = 'Mi Superstar';
   const winners = match.winners || [];
-  if (winners.length === 0) return 'draw';
+  if (winners.length === 0) return 'loss'; // no winners declared = loss
   if (winners.some(w => w.toLowerCase().includes('mi superstar') || w === myName)) return 'win';
   // Check if user won: if winners list is not empty and doesn't include any rival
   const rivals = match.vs || [];
@@ -439,8 +439,8 @@ function openMatchForm(matchId, day, month, year) {
   initMultiSelect('ms-vs',      state.catalogs.wrestlers, match?.vs      || [], 'wrestlers');
   initMultiSelect('ms-partners', state.catalogs.wrestlers, match?.partners || [], 'wrestlers');
   initMultiSelect('ms-titles',      state.catalogs.titles, match?.titles      || [], 'titles');
-  initMultiSelect('ms-held-titles', state.catalogs.titles, match?.heldTitles  || [], 'titles');
-  document.getElementById('f-title-change').checked = match?.titleChange || false;
+  initMultiSelect('ms-titles-won',  state.catalogs.titles, match?.titlesWon  || [], 'titles');
+  initMultiSelect('ms-titles-lost', state.catalogs.titles, match?.titlesLost || [], 'titles');
   // Ganadores & Rivalidad leen del catálogo de luchadores
   initMultiSelect('ms-winners', state.catalogs.wrestlers, match?.winners || [], 'wrestlers');
   initMultiSelect('ss-rivalry', state.catalogs.wrestlers, Array.isArray(match?.rivalry) ? match.rivalry : (match?.rivalry ? [match.rivalry] : []), 'wrestlers');
@@ -499,7 +499,8 @@ async function handleSave() {
   const vs       = getMultiSelected('ms-vs');
   const partners = getMultiSelected('ms-partners');
   const titles      = getMultiSelected('ms-titles');
-  const heldTitles  = getMultiSelected('ms-held-titles');
+  const titlesWon    = getMultiSelected('ms-titles-won');
+  const titlesLost   = getMultiSelected('ms-titles-lost');
   const winners  = getMultiSelected('ms-winners');
   const rivalry  = getMultiSelected('ss-rivalry');
 
@@ -510,8 +511,8 @@ async function handleSave() {
     vs,
     partners,
     titles,
-    heldTitles,
-    titleChange:  document.getElementById('f-title-change').checked,
+    titlesWon,
+    titlesLost,
     winners,
     rivalry,
     brand:        getMultiSelected('ss-brand'),
@@ -829,7 +830,7 @@ function renderHistory() {
 
     const stars = m.rating > 0 ? '★ ' + m.rating.toFixed(1) : '';
     const titleStr = isPromo(m) ? 'PROMO' : (m.vs?.length > 0 ? 'vs ' + m.vs.join(' & ') : 'Sin rival');
-    const labelMap = { win: 'Victoria', loss: 'Derrota', draw: 'Empate', promo: 'Promo' };
+    const labelMap = { win: 'Victoria', loss: 'Derrota', promo: 'Promo' };
 
     card.innerHTML = `
       <div class="match-num">#${String(m.num || 0).padStart(3,'0')}</div>
@@ -868,7 +869,6 @@ function renderStats() {
   const total = realMatches.length;
   const wins = realMatches.filter(m => getResultClass(m) === 'win').length;
   const losses = realMatches.filter(m => getResultClass(m) === 'loss').length;
-  const draws = realMatches.filter(m => getResultClass(m) === 'draw').length;
   const rated = realMatches.filter(m => m.rating > 0);
   const avgRating = rated.length > 0 ? (rated.reduce((s,m) => s + m.rating, 0) / rated.length).toFixed(2) : '—';
   const winPct = total > 0 ? Math.round(wins / total * 100) : 0;
@@ -878,8 +878,7 @@ function renderStats() {
     <div class="stat-card-item"><div class="sc-label">Victorias</div><div class="sc-val win">${wins}</div></div>
     <div class="stat-card-item"><div class="sc-label">% Victoria</div><div class="sc-val gold">${winPct}%</div></div>
     <div class="stat-card-item"><div class="sc-label">Rating prom.</div><div class="sc-val gold">${avgRating === '—' ? '—' : '★ ' + avgRating}</div></div>
-    <div class="stat-card-item"><div class="sc-label">Derrotas</div><div class="sc-val loss">${losses}</div></div>
-    <div class="stat-card-item"><div class="sc-label">Empates</div><div class="sc-val">${draws}</div></div>`;
+    <div class="stat-card-item"><div class="sc-label">Derrotas</div><div class="sc-val loss">${losses}</div></div>`;
 
   // By type
   const typeEl = document.getElementById('stat-by-type');
@@ -928,12 +927,11 @@ function renderStats() {
     const rivalList = Array.isArray(m.rivalry) ? m.rivalry : (m.rivalry ? [m.rivalry] : []);
     rivalList.forEach(rival => {
       if (!rival) return;
-      if (!rivals[rival]) rivals[rival] = { total: 0, wins: 0, losses: 0, draws: 0 };
+      if (!rivals[rival]) rivals[rival] = { total: 0, wins: 0, losses: 0 };
       rivals[rival].total++;
       const rc = getResultClass(m);
       if (rc === 'win') rivals[rival].wins++;
       else if (rc === 'loss') rivals[rival].losses++;
-      else rivals[rival].draws++;
     });
   });
   Object.entries(rivals).sort((a,b) => b[1].total - a[1].total).forEach(([rival, data]) => {
@@ -943,7 +941,6 @@ function renderStats() {
       <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
       <span class="rivalry-record" style="color:var(--loss)">${data.losses}D</span>
       <span class="rivalry-record" style="margin:0 4px;color:var(--text-ter)">·</span>
-      <span class="rivalry-record" style="color:var(--draw)">${data.draws}E</span>
     </div>`;
   });
   if (rivEl.innerHTML === '') rivEl.innerHTML = '<p style="color:var(--text-ter);font-size:13px;">Sin rivalidades aún</p>';
@@ -996,61 +993,46 @@ function renderStats() {
 }
 
 function calcTitleDays() {
-  // Rules:
-  //  - titleChange=true + title in heldTitles  → user WON title this match
-  //  - titleChange=true + title NOT in heldTitles (but was before) → user LOST title this match
-  //  - titleChange=false → title appears/disappears naturally; count from first to last match holding it
-  // Days formula: dayNum_end - dayNum_start  (starts counting from day AFTER winning)
-  const sorted = [...state.matches].sort((a,b) => (a.sortKey||'').localeCompare(b.sortKey||''));
-  const titleTotal  = {};   // final tally per title
-  const winDay      = {};   // title → dayNum when reign started
-  const lastHeldDay = {};   // title → dayNum of most recent match where title was in heldTitles
-  const prevHeld    = {};   // title → bool (was held in previous match?)
+  // Uses explicit events per match:
+  //   m.titlesWon:  titles user WON in this match (reign starts NEXT day)
+  //   m.titlesLost: titles user LOST in this match (reign ends AT this match day)
+  //
+  // Days formula example: won Aug 27, lost Sep 2
+  //   days = dayNum(Sep 2) - dayNum(Aug 27) = 3
+  //   (counts: Aug 28 = day 1, Aug 29 = day 2... matches user's example)
+  //
+  // If still active (no loss event): counts from win day to end of displayed month.
+
+  const sorted = [...state.matches].sort((a,b) => (a.sortKey||''). localeCompare(b.sortKey||''));
+  const titleTotal = {};  // title → total days
+  const reignStart = {};  // title → dayNum when won (still active)
 
   sorted.forEach(m => {
-    const heldNow   = new Set(m.heldTitles || []);
-    const dayNum    = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
-    const isChange  = m.titleChange || false;
+    const dayNum = (m.year - 1) * 12 * 28 + m.month * 28 + m.day;
 
-    // --- Titles that WERE held but are NOT held now ---
-    Object.keys(prevHeld).forEach(title => {
-      if (prevHeld[title] && !heldNow.has(title)) {
-        // Title disappeared
-        if (isChange) {
-          // Explicit: lost it on this match day
-          titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - (winDay[title] || dayNum));
-        } else {
-          // Implicit: count to LAST match that had it (which is lastHeldDay[title])
-          titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, (lastHeldDay[title] || dayNum) - (winDay[title] || dayNum));
-        }
-        delete winDay[title];
+    // Titles LOST in this match → close active reign
+    (m.titlesLost || []).forEach(title => {
+      if (reignStart[title] !== undefined) {
+        const days = Math.max(0, dayNum - reignStart[title]);
+        titleTotal[title] = (titleTotal[title] || 0) + days;
+        delete reignStart[title];
       }
     });
 
-    // --- Titles that ARE held now ---
-    heldNow.forEach(title => {
-      lastHeldDay[title] = dayNum;
-
-      if (!prevHeld[title]) {
-        // Title gained (wasn't held last match)
-        winDay[title] = dayNum;
-      } else if (isChange && prevHeld[title]) {
-        // Title was held AND titleChange=true → they lost and won it back (rare edge case)
-        // Close previous reign, start new one
-        titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - (winDay[title] || dayNum));
-        winDay[title] = dayNum;
+    // Titles WON in this match → start new reign
+    (m.titlesWon || []).forEach(title => {
+      // If somehow won while already tracking (shouldn't happen), close previous first
+      if (reignStart[title] !== undefined) {
+        titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, dayNum - reignStart[title]);
       }
+      reignStart[title] = dayNum;
     });
-
-    // Update prevHeld for next iteration
-    Object.keys(prevHeld).forEach(t => { prevHeld[t] = false; });
-    heldNow.forEach(t => { prevHeld[t] = true; });
   });
 
-  // Still active reigns — count to end of currently displayed month
+  // Still active reigns → count to end of currently displayed month
   const today = (state.currentYear - 1) * 12 * 28 + state.currentMonth * 28 + 28;
-  Object.keys(winDay).forEach(title => {
-    titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, today - winDay[title]);
+  Object.keys(reignStart).forEach(title => {
+    titleTotal[title] = (titleTotal[title] || 0) + Math.max(0, today - reignStart[title]);
   });
 
   return titleTotal;
@@ -1182,7 +1164,7 @@ function drawExportCanvas() {
     bg:      '#f5f4f0', bg2: '#ffffff', bg3: '#eeede9',
     border:  'rgba(0,0,0,0.15)',
     text:    '#1a1a1e', textSec: '#5a5865', textTer: '#9a98a4',
-    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', draw: '#b06010', promo: '#5548c8',
+    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', promo: '#5548c8',
   };
 
   const SCALE = 2, W = 900, PAD = 24;
@@ -1308,7 +1290,7 @@ function drawExportCanvas() {
       dm.forEach(m => {
         if (y + ROW1 > BOT) return;
         const rc = getResultClass(m);
-        const dotCol = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
+        const dotCol = {win:C.win,loss:C.loss,promo:C.promo}[rc]||C.textSec;
 
         // Row 1: ● winner(s)
         ctx.beginPath(); ctx.arc(PAD_L+4, y-2, 3.5, 0, Math.PI*2);
@@ -1364,7 +1346,7 @@ function drawExportCanvas() {
 
   // ── Legend ──
   const lY = cY+CAL_H+10;
-  [['Victoria',C.win],['Derrota',C.loss],['Empate',C.draw],['Promo',C.promo]].forEach(([label,col],i) => {
+  [['Victoria',C.win],['Derrota',C.loss],['Promo',C.promo]].forEach(([label,col],i) => {
     const lX = PAD+i*90;
     ctx.beginPath(); ctx.arc(lX+5,lY+7,4,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
     txt(label, lX+14, lY+11, {sz:12,c:C.textSec});
@@ -1386,7 +1368,7 @@ function drawMonthlyExportCanvas() {
     bg:      '#f5f4f0', bg2: '#ffffff', bg3: '#eeede9',
     border:  'rgba(0,0,0,0.15)',
     text:    '#1a1a1e', textSec: '#5a5865', textTer: '#9a98a4',
-    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', draw: '#b06010', promo: '#5548c8',
+    accent:  '#b8941a', win: '#2d7a4f', loss: '#c03030', promo: '#5548c8',
   };
 
   const SCALE = 2, W = 900, PAD = 24;
@@ -1505,7 +1487,7 @@ function drawMonthlyExportCanvas() {
       dm.forEach(m => {
         if (y + ROW1 > BOT) return;
         const rc = getResultClass(m);
-        const dotCol = {win:C.win,loss:C.loss,draw:C.draw,promo:C.promo}[rc]||C.textSec;
+        const dotCol = {win:C.win,loss:C.loss,promo:C.promo}[rc]||C.textSec;
 
         ctx.beginPath(); ctx.arc(PAD_L+4, y-2, 3.5, 0, Math.PI*2);
         ctx.fillStyle = dotCol; ctx.fill();
@@ -1533,7 +1515,7 @@ function drawMonthlyExportCanvas() {
 
   // ── Legend ──
   const lY = cY+CAL_H+10;
-  [['Victoria',C.win],['Derrota',C.loss],['Empate',C.draw],['Promo',C.promo]].forEach(([label,col],i) => {
+  [['Victoria',C.win],['Derrota',C.loss],['Promo',C.promo]].forEach(([label,col],i) => {
     const lX = PAD+i*90;
     ctx.beginPath(); ctx.arc(lX+5,lY+7,4,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
     txt(label, lX+14, lY+11, {sz:12,c:C.textSec});
@@ -1554,7 +1536,7 @@ function drawStatsCanvas(matches, periodLabel, filename) {
     bg:'#f5f4f0', bg2:'#ffffff', bg3:'#eeede9', bg4:'#e2e1dc',
     border:'rgba(0,0,0,0.12)', border2:'rgba(0,0,0,0.18)',
     text:'#1a1a1e', textSec:'#5a5865', textTer:'#9a98a4',
-    accent:'#b8941a', win:'#2d7a4f', loss:'#c03030', draw:'#b06010', promo:'#5548c8',
+    accent:'#b8941a', win:'#2d7a4f', loss:'#c03030', promo:'#5548c8',
   };
 
   // ── Compute all stats from provided matches ──
@@ -1562,7 +1544,6 @@ function drawStatsCanvas(matches, periodLabel, filename) {
   const total = real.length;
   const wins   = real.filter(m => getResultClass(m) === 'win').length;
   const losses = real.filter(m => getResultClass(m) === 'loss').length;
-  const draws  = real.filter(m => getResultClass(m) === 'draw').length;
   const rated  = real.filter(m => m.rating > 0);
   const avgRating = rated.length ? (rated.reduce((s,m)=>s+m.rating,0)/rated.length).toFixed(2) : '—';
   const winPct = total ? Math.round(wins/total*100) : 0;
@@ -1586,12 +1567,11 @@ function drawStatsCanvas(matches, periodLabel, filename) {
     const rivalList = Array.isArray(m.rivalry)?m.rivalry:(m.rivalry?[m.rivalry]:[]);
     rivalList.forEach(rival => {
       if (!rival) return;
-      if (!rivals[rival]) rivals[rival]={total:0,wins:0,losses:0,draws:0};
+      if (!rivals[rival]) rivals[rival]={total:0,wins:0,losses:0};
       rivals[rival].total++;
       const rc=getResultClass(m);
       if (rc==='win') rivals[rival].wins++;
       else if (rc==='loss') rivals[rival].losses++;
-      else rivals[rival].draws++;
     });
   });
 
@@ -1659,7 +1639,6 @@ function drawStatsCanvas(matches, periodLabel, filename) {
     ['LUCHAS TOTALES', total, C.text],
     ['VICTORIAS',      wins,  C.win],
     ['DERROTAS',       losses,C.loss],
-    ['EMPATES',        draws, C.draw],
     ['% VICTORIA',     winPct+'%', C.accent],
     ['RATING PROM.',   avgRating==='—'?'—':'★'+avgRating, C.accent],
   ].forEach(([label,val,col],i) => {
@@ -1718,9 +1697,8 @@ function drawStatsCanvas(matches, periodLabel, filename) {
     drawList(rivalEntries, x, y, w, (name, data, x, ry, w) => {
       const nameFont=`500 10px "Barlow",sans-serif`;
       txt(clip(name, w*0.55, nameFont), x+8, ry+LIST_ROW/2+4, {sz:10,w:'500'});
-      txt(`${data.wins}V`, x+w-70, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.win,a:'right'});
-      txt(`${data.losses}D`, x+w-40, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.loss,a:'right'});
-      txt(`${data.draws}E`, x+w-10, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.draw,a:'right'});
+      txt(`${data.wins}V`, x+w-50, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.win,a:'right'});
+      txt(`${data.losses}D`, x+w-10, ry+LIST_ROW/2+4, {sz:10,w:'700',c:C.loss,a:'right'});
     })
   );
 

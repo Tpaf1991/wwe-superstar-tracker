@@ -18,8 +18,6 @@
   --win-bg:   rgba(45,122,79,0.10);
   --loss:     #c03030;
   --loss-bg:  rgba(192,48,48,0.10);
-  --draw:     #b06010;
-  --draw-bg:  rgba(176,96,16,0.10);
   --promo:    #5548c8;
   --promo-bg: rgba(85,72,200,0.10);
   --radius:   10px;
@@ -207,7 +205,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .cal-dot.win { background: var(--win); }
 .cal-dot.loss { background: var(--loss); }
-.cal-dot.draw { background: var(--draw); }
 .cal-dot.promo { background: var(--promo); }
 
 .cal-dot-row {
@@ -271,7 +268,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .leg.win::before { background: var(--win); }
 .leg.loss::before { background: var(--loss); }
-.leg.draw::before { background: var(--draw); }
 .leg.promo::before { background: var(--promo); }
 
 /* ===== HISTORY ===== */
@@ -305,7 +301,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .match-card.promo { border-left: 3px solid var(--promo); }
 .match-card.win { border-left: 3px solid var(--win); }
 .match-card.loss { border-left: 3px solid var(--loss); }
-.match-card.draw { border-left: 3px solid var(--draw); }
 
 .match-num {
   font-family: var(--font-head);
@@ -356,7 +351,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .match-result-badge.win { background: var(--win-bg); color: var(--win); }
 .match-result-badge.loss { background: var(--loss-bg); color: var(--loss); }
-.match-result-badge.draw { background: var(--draw-bg); color: var(--draw); }
 .match-result-badge.promo { background: var(--promo-bg); color: var(--promo); }
 
 .match-stars { font-size: 13px; color: var(--accent); font-family: var(--font-head); font-weight: 600; }
