@@ -951,10 +951,11 @@ function renderStats() {
   if (winsByWrestlerEl) {
     winsByWrestlerEl.innerHTML = '';
     const winsByWrestler = {};
-    // Count every wrestler listed in the winners field across all matches (including promos)
+    // Count only winners who were in the VS (rivals) field — excludes user's own superstar
     state.matches.forEach(m => {
+      const rivals = new Set(m.vs || []);
       (m.winners || []).forEach(winner => {
-        if (!winner) return;
+        if (!winner || !rivals.has(winner)) return;
         winsByWrestler[winner] = (winsByWrestler[winner] || 0) + 1;
       });
     });
