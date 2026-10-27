@@ -45,6 +45,7 @@ async function init() {
   try {
     await loadCatalogs();
     await loadMatches();
+    renumberMatches(); // assign display numbers after loading
   } catch(err) {
     console.error('Firebase load error:', err);
   }
