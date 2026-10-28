@@ -797,8 +797,8 @@ function getSingleSelectValue(containerId) {
 // ---- History ----
 function renderHistory() {
   const list = document.getElementById('history-list');
-  const brandFilter = document.getElementById('filter-brand').value;
-  const typeFilter = document.getElementById('filter-type').value;
+  const brandFilter  = document.getElementById('filter-brand').value;
+  const typeFilter   = document.getElementById('filter-type').value;
   const resultFilter = document.getElementById('filter-result').value;
 
   // Populate filters
@@ -808,14 +808,23 @@ function renderHistory() {
 
   const types = ['', ...state.catalogs.types];
   const curType = document.getElementById('filter-type').value;
-  document.getElementById('filter-type').innerHTML = types.map(t => `<option value="${t}" ${t === curType ? 'selected':''}>` + (t || 'Todos los tipos') + '</option>').join('');
+  document.getElementById('filter-type').innerHTML = types.map(t => `<option value="${t}" ${t === curType ? 'selected':''}>`+ (t || 'Todos los tipos') + '</option>').join('');
+
+  // Wrestler filter — reads from wrestlers catalog, sorted A-Z
+  const wrestlers = ['', ...state.catalogs.wrestlers];
+  const curWrestler = document.getElementById('filter-rival').value;
+  document.getElementById('filter-rival').innerHTML = wrestlers
+    .map(w => `<option value="${w}" ${w === curWrestler ? 'selected':''}>${w || 'Todos los luchadores'}</option>`)
+    .join('');
+  const wrestlerFilter = curWrestler;
 
   const realMatches = state.matches.filter(m => !isPromo(m));
   let filtered = [...state.matches].reverse();
 
-  if (brandFilter) filtered = filtered.filter(m => (Array.isArray(m.brand) ? m.brand : [m.brand]).includes(brandFilter));
-  if (typeFilter) filtered = filtered.filter(m => m.type?.includes(typeFilter));
-  if (resultFilter) filtered = filtered.filter(m => getResultClass(m) === resultFilter);
+  if (brandFilter)    filtered = filtered.filter(m => (Array.isArray(m.brand) ? m.brand : [m.brand]).includes(brandFilter));
+  if (typeFilter)     filtered = filtered.filter(m => m.type?.includes(typeFilter));
+  if (resultFilter)   filtered = filtered.filter(m => getResultClass(m) === resultFilter);
+  if (wrestlerFilter) filtered = filtered.filter(m => (m.vs || []).includes(wrestlerFilter));
 
   list.innerHTML = '';
 
@@ -859,7 +868,7 @@ function renderHistory() {
   });
 
   // Re-attach filter listeners
-  ['filter-brand','filter-type','filter-result'].forEach(id => {
+  ['filter-brand','filter-type','filter-result','filter-rival'].forEach(id => {
     document.getElementById(id).onchange = renderHistory;
   });
 }
