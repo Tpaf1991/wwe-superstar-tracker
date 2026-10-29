@@ -810,10 +810,11 @@ function renderHistory() {
   const curType = document.getElementById('filter-type').value;
   document.getElementById('filter-type').innerHTML = types.map(t => `<option value="${t}" ${t === curType ? 'selected':''}>`+ (t || 'Todos los tipos') + '</option>').join('');
 
-  // Wrestler filter — reads from wrestlers catalog, sorted A-Z
-  const wrestlers = ['', ...state.catalogs.wrestlers];
+  // Wrestler filter — only wrestlers who appear in VS field (excludes user's own superstar)
+  const vsWrestlers = ['', ...new Set(state.matches.flatMap(m => m.vs || []).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'es', {sensitivity: 'base'}));
   const curWrestler = document.getElementById('filter-rival').value;
-  document.getElementById('filter-rival').innerHTML = wrestlers
+  document.getElementById('filter-rival').innerHTML = vsWrestlers
     .map(w => `<option value="${w}" ${w === curWrestler ? 'selected':''}>${w || 'Todos los luchadores'}</option>`)
     .join('');
   const wrestlerFilter = curWrestler;
